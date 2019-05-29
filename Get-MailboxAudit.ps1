@@ -48,12 +48,6 @@ function Stop-MailboxAuditStatistics() {
     }
 }
 
-function Set-MailboxAuditStatistics($aduser) {
-    
-    $mbxAdCombo | Export-Csv -Path $script:mailboxAuditOutput -NoTypeInformation -Append
-    
-}
-
 function Add-MailboxAuditStatistics ($aduser) {
         [string]$RecipientTypeDetails=$null
         [string]$inboxRules=$null
