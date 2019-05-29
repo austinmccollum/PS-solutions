@@ -16,49 +16,42 @@ Param(
     [string]$Resume
 )
 
-#region SetSpecialColors
-# If the -Debug parameter was used, then record the existing Debug preference and then set it to Continue so bypass script pauses for Write-Debug.
-If ($PSBoundParameters["Debug"]) {
-	$HoldDebugPreference = $DebugPreference
-	$DebugPreference = "Continue"
-	# Also save the default foreground text color and then change it to Dark Red.
-    $DebugForeground = $Host.PrivateData.DebugForegroundColor
-    $DebugBackground = $Host.PrivateData.DebugBackgroundColor
-    $Host.PrivateData.DebugForegroundColor = "Blue"
-    $Host.PrivateData.DebugBackgroundColor = "Yellow"
-}
-# If the -Verbose parameter was used, then save the default foreground text color and then change it to Cyan.
-If ($PSBoundParameters["Verbose"]) {
-    $VerboseForeground = $Host.PrivateData.VerboseForegroundColor
-    $VerboseBackground = $Host.PrivateData.VerboseBackgroundColor
-    $Host.PrivateData.VerboseForegroundColor = "White"
-    $Host.PrivateData.VerboseBackgroundColor = "Yellow"
-}
-#endregion SetSpecialColors
-
 function Get-ADMailboxUsers {
-    [cmdletbinding()]
-    Param()
     # retrieves all mailbox users in Active Directory, flushes users and selected properties to file 
-    if (Test-Path -Path $script:ADUserOutput)
-    {
-        Write-Verbose "Using previously saved AD user list from today, $($script:ADUserOutput)"
-        $ADMailboxUsers = Import-Csv -Path $script:ADUserOutput
-    }
-    else
-    {
-        $ADMailboxUsers = Get-ADUser -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" -and name -notlike "SystemMailbox{*"} -properties distinguishedname,
+    $ADMailboxUsers = Get-ADUser -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" -and name -notlike "SystemMailbox{*"} -properties distinguishedname,
         `msDS-parentdistname,title,description,displayname,msExchDelegateListLink,publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,
         `extensionattribute4,extensionattribute5,lastlogondate,created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset
-        $ADMailboxUsers | export-csv -Path $script:ADUserOutput -NoTypeInformation    
-    }
+    $ADMailboxUsers | export-csv -Path $script:ADUserOutput -NoTypeInformation    
     return $ADMailboxUsers
 }
 
-function Stop-MailboxAuditStatistics {
+function Stop-MailboxAuditStatistics() {
+    [cmdletbinding()]
+    Param(
+        [Parameter( Mandatory=$false)]	
+        [bool]$Flush,
     
-    Write-Verbose "Stopping collection $i and writing to $($script:mailboxAuditOutput)"
-    $mbxAdCombo | export-csv -path $script:mailboxAuditOutput -notypeinformation
+        [Parameter( Mandatory=$true)]
+        [string]$aduser
+    )
+    
+    
+    # Now to put all that info into a spreadsheet. 
+    $mbxAdCombo | export-csv -path $script:mailboxAuditOutput -notypeinformation -Append
+    if ($Flush)
+    {
+       
+        [System.Collections.ArrayList]$mbxAdCombo = New-Object System.Collections.ArrayList($null)
+    }
+    else {
+        Write-Verbose "Stopping collection $i and writing to $($script:mailboxAuditOutput)"
+    }
+}
+
+function Set-MailboxAuditStatistics($aduser) {
+    
+    $mbxAdCombo | Export-Csv -Path $script:mailboxAuditOutput -NoTypeInformation -Append
+    
 }
 
 function Add-MailboxAuditStatistics ($aduser) {
@@ -67,7 +60,7 @@ function Add-MailboxAuditStatistics ($aduser) {
         [string]$SendAs=$null
     
         $mailnickname=$aduser.mailnickname    
-        $mailbox = Get-MailboxStatistics -identity $mailnickname | select TotalItemSize,TotalDeletedItemSize,database,mailboxguid,lastlogontime,ProhibitSendquota
+        $mailbox = Get-MailboxStatistics -identity $mailnickname | Select-Object TotalItemSize,TotalDeletedItemSize,database,mailboxguid,lastlogontime,ProhibitSendquota
     
         if($null -eq $mailbox.lastlogontime)
         {
@@ -77,10 +70,10 @@ function Add-MailboxAuditStatistics ($aduser) {
     
         if ($mailbox.lastlogontime -gt $agedDate)
         {
-            $RecipientTypeDetails = (get-recipient $aduser.displayname | select RecipientTypeDetails).RecipientTypeDetails
-            $inboxRules = Get-InboxRule -Mailbox $aduser.displayname | select name,enabled
+            $RecipientTypeDetails = (get-recipient $aduser.displayname | Select-Object RecipientTypeDetails).RecipientTypeDetails
+            $inboxRules = Get-InboxRule -Mailbox $aduser.displayname | Select-Object name,enabled
             [string]$inboxRulesformatted = $inboxRules -split '-------'
-            [string]$SendAs = (Get-ADPermission -Identity $aduser.distinguishedname | where {$_.isinherited -eq $false -and $_.extendedrights -like "Send-As" -and $_.User.RawIdentity -ne "NT AUTHORITY\SELF"} | select user).user.RawIdentity
+            [string]$SendAs = (Get-ADPermission -Identity $aduser.distinguishedname | Where-Object {$_.isinherited -eq $false -and $_.extendedrights -like "Send-As" -and $_.User.RawIdentity -ne "NT AUTHORITY\SELF"} | select user).user.RawIdentity
         }
         [string]$publicdelegates = $aduser.publicdelegates.value
         [string]$publicdelegatesBL = $aduser.publicdelegatesBL.value
@@ -130,12 +123,13 @@ $startDate = Get-Date
 $error=$null
 
 # Setup some variables for flushing data at regular intervals
-$flushLimit = 100
-$timestamp = Get-Date -Format o | foreach {$_ -replace ":", "."}
+$timestamp = Get-Date -Format o | ForEach-Object {$_ -replace ":", "."}
 $daystamp = Get-Date -Format 'MM-dd-yyyy'
 $outputFolder= "$($ENV:HOMEPATH)\desktop\"
 $script:mailboxAuditOutput = $outputfolder + "MBX audit" + $timestamp + ".csv"
+$script:mailboxAuditOutputTest = $outputfolder + "MBX audit Test" + $timestamp + ".csv"
 $script:ADUserOutput = $outputfolder + "AD users with mailboxes" + $daystamp + ".csv"
+
 
 #$agedADaccount = (get-date).adddays(-365)
 $agedDate = (get-date).adddays(-365)
@@ -144,9 +138,20 @@ Set-ADServerSettings -ViewEntireForest $true
 
 write-progress -id 1 -activity "Getting all on prem mailboxes from Active Directory" -PercentComplete (1)
 
-$adusers=Get-ADMailboxUsers -verbose
+if (Test-Path -Path $script:ADUserOutput)
+{
+    Write-Information "Using previously saved AD user list from today, $($script:ADUserOutput)"
+    $ADUsers = Import-Csv -Path $script:ADUserOutput
+}
+else 
+{
+    $adusers=Get-ADMailboxUsers
+}
+
 [int]$mbxcount = ($adusers | Measure-Object).count
 [int]$i=1
+[int]$flushLimit = 100
+[int]$flushCount = 0
 
 write-progress -id 1 -activity "Getting all Audit info for $mbxcount on prem mailboxes" -PercentComplete (10)
 Write-Host "Press the Ctrl-C key to stop and save progress so far..."
@@ -155,28 +160,31 @@ Write-Host "Press the Ctrl-C key to stop and save progress so far..."
 
 foreach ($mbxuser in $adusers) 
 {
+    
     if ($Host.UI.RawUI.KeyAvailable -and ($Keypress = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp")))
     {
         if([Int]$Keypress.Character -eq 3)
         {
             Write-Warning "CTRL-C was used - Shutting down any running jobs before exiting the script."
-            #Write-Debug "We're here! $keyoption and $i"
-            Stop-MailboxAuditStatistics
-            #[System.IO.Path]::GetTempFileName()
+            Stop-MailboxAuditStatistics -aduser $mbxuser -Verbose
         }
     }
- 
+   
+    $percentage=(($i/$mbxcount)*90) + 10
+    write-progress -id 1 -activity "Processing $mbxcount on prem mailboxes" -PercentComplete ($percentage) -Status "Currently getting stats for mbx # $i ... $($mbxuser.DisplayName)"
+    $stats = Add-MailboxAuditStatistics($mbxuser)
 
- $percentage=(($i/$mbxcount)*90) + 10
- write-progress -id 1 -activity "Processing $mbxcount on prem mailboxes" -PercentComplete ($percentage) -Status "Currently getting stats for mbx # $i ... $($mbxuser.DisplayName)"
- $stats = Add-MailboxAuditStatistics($mbxuser)
- $null = $mbxAdCombo.Add((New-Object PSobject -property $stats))
+    $null = $mbxAdCombo.Add((New-Object PSobject -property $stats))
+    if ($flushCount -ge $flushLimit)
+    {
+        Write-Verbose "Flushing collection $i and appending to $($script:mailboxAuditOutput)"
+        Stop-MailboxAuditStatistics -Flush $true -aduser $mbxuser -Verbose
+        $flushCount=0
+    }
  
- $i++
+    $i++
+    $flushCount++
 }
-
-# Now to put all that info into a spreadsheet. 
-
 
 $errfilename = $outputfolder + "Errorlog_" + $timestamp + ".txt" 
 
