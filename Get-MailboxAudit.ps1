@@ -5,22 +5,15 @@
     Version 1.0: 4/18/2019 finally upgraded sample script to fully featured
 .Description
 A comprehensive audit of mailboxes to identify mailboxes that haven't been logged into for a long time.
-.Parameter Resume
-Look for saved cache of ad results and compare results already collected
 .Example
 
 #>
-[cmdletbinding()]
-Param(
-    [Parameter( Mandatory=$false)]	
-    [string]$Resume
-)
-
 function Get-ADMailboxUsers {
     # retrieves all mailbox users in Active Directory, flushes users and selected properties to file 
-    $ADMailboxUsers = Get-ADUser -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" -and name -notlike "SystemMailbox{*"} -properties distinguishedname,
-        `msDS-parentdistname,title,description,displayname,msExchDelegateListLink,publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,
-        `extensionattribute4,extensionattribute5,lastlogondate,created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset
+    $ADMailboxUsers = Get-ADUser -searchbase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" 
+        `-and name -notlike "SystemMailbox{*"} -properties distinguishedname,msDS-parentdistname,title,description,displayname,msExchDelegateListLink,
+        `publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,extensionattribute4,extensionattribute5,lastlogondate,
+        `created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset
     $ADMailboxUsers | export-csv -Path $script:ADUserOutput -NoTypeInformation    
     return $ADMailboxUsers
 }
@@ -32,20 +25,48 @@ function Stop-MailboxAuditStatistics() {
         [bool]$Flush,
     
         [Parameter( Mandatory=$true)]
-        [string]$aduser
+        $aduser,
+
+        [Parameter( Mandatory=$true)]
+        [int]$index
     )
-    
     
     # Now to put all that info into a spreadsheet. 
     $mbxAdCombo | export-csv -path $script:mailboxAuditOutput -notypeinformation -Append
     if ($Flush)
     {
-       
-        [System.Collections.ArrayList]$mbxAdCombo = New-Object System.Collections.ArrayList($null)
+        Write-Information "Flushing..."
+        $mbxAdCombo.Clear()
+        $null = New-Item -Path $script:ResumeIndexOutput -ItemType File -Force
+        Set-Content -Path $script:ResumeIndexOutput -Value $index
+        Add-Content -Path $script:ResumeIndexOutput -Value $script:mailboxAuditOutput
     }
     else {
-        Write-Verbose "Stopping collection $i and writing to $($script:mailboxAuditOutput)"
+        Write-Verbose "Stopping collection at index of $index and writing to $($script:mailboxAuditOutput)"
+        Write-Verbose "Stopping with user $($aduser.displayname)"
+        $null = New-Item -Path $script:ResumeIndexOutput -ItemType File -Force
+        Set-Content -Path $script:ResumeIndexOutput -Value $index
+        Add-Content -Path $script:ResumeIndexOutput -Value $script:mailboxAuditOutput 
+        $mbxAdCombo = $null
     }
+}
+
+function Exit-MailboxAuditStatistics($error) {
+    foreach ($err in $error) 
+    {  
+        $logdata = $null 
+        $logdata = $err 
+        if ($logdata) 
+        { 
+            out-file -filepath $script:errfilename -Inputobject $logData -Append 
+        } 
+    }
+
+    $endDate = Get-Date
+    $elapsedTime = $endDate - $startDate
+    Write-Verbose "Report started at $($script:startDate)."
+    Write-Verbose "Report ended at $($endDate)."
+    Write-Verbose "Total Elapsed Time: $($elapsedTime)"
 }
 
 function Add-MailboxAuditStatistics ($aduser) {
@@ -109,26 +130,36 @@ function Add-MailboxAuditStatistics ($aduser) {
             OU=$aduser.'msDS-parentdistname'
     
         }
-        return $line
-    }
+    return $line
+}
 
 # Main script
-$startDate = Get-Date
-$error=$null
+# Start new timer
+$script:startDate = Get-Date
 
-# Setup some variables for flushing data at regular intervals
+# Clear error variable
+$error.Clear()
+
+# Setup time date variables 
 $timestamp = Get-Date -Format o | ForEach-Object {$_ -replace ":", "."}
 $daystamp = Get-Date -Format 'MM-dd-yyyy'
-$outputFolder= "$($ENV:HOMEPATH)\desktop\"
-$script:mailboxAuditOutput = $outputfolder + "MBX audit" + $timestamp + ".csv"
-$script:mailboxAuditOutputTest = $outputfolder + "MBX audit Test" + $timestamp + ".csv"
-$script:ADUserOutput = $outputfolder + "AD users with mailboxes" + $daystamp + ".csv"
 
+# Setup output variables script wide
+$script:outputFolder= "$($ENV:HOMEPATH)\desktop\"
+$script:mailboxAuditOutput = $script:outputFolder + "MBX audit" + $timestamp + ".csv"
+$script:ADUserOutput = $script:outputFolder + "AD users with mailboxes.csv"
+$script:ResumeIndexOutput = $script:outputFolder + "ResumeMailboxAudit.log"
+$script:errfilename = $script:outputFolder + "Errorlog_" + $timestamp + ".txt" 
 
-#$agedADaccount = (get-date).adddays(-365)
 $agedDate = (get-date).adddays(-365)
-#$everyoneDate= (get-date)
+[int]$ResumeIndex = 0
 Set-ADServerSettings -ViewEntireForest $true
+
+[int]$mbxcount = 0
+[int]$i=1  # variable for progress bar
+[int]$index = 0  # variable for iterating through primary mailbox user array 
+[int]$flushLimit = 100 # flush count to flush at
+[int]$flushCount = 0 # current flush count
 
 write-progress -id 1 -activity "Getting all on prem mailboxes from Active Directory" -PercentComplete (1)
 
@@ -136,64 +167,69 @@ if (Test-Path -Path $script:ADUserOutput)
 {
     Write-Information "Using previously saved AD user list from today, $($script:ADUserOutput)"
     $ADUsers = Import-Csv -Path $script:ADUserOutput
+    if (Test-Path -Path $script:ResumeIndexOutput)
+    {
+        $ResumeContent = Get-Content $script:ResumeIndexOutput
+        $ResumeIndex = $ResumeContent[0]
+        [string]$ResumeMbxOutput = $ResumeContent[1]
+        $script:mailboxAuditOutput = $ResumeMbxOutput
+
+        Write-Information "Resuming report at index of $ResumeIndex with output file $ResumeMbxOutput"
+        Write-Information "Index $ResumeIndex correlates to user $($adUsers[$ResumeIndex].displayname)" 
+    }
 }
 else 
 {
     $adusers=Get-ADMailboxUsers
 }
 
-[int]$mbxcount = ($adusers | Measure-Object).count
-[int]$i=1
-[int]$flushLimit = 100
-[int]$flushCount = 0
+$i = $ResumeIndex
+$mbxcount = ($adusers | Measure-Object).count
 
 write-progress -id 1 -activity "Getting all Audit info for $mbxcount on prem mailboxes" -PercentComplete (10)
 Write-Host "Press the Ctrl-C key to stop and save progress so far..."
-[Console]::TreatControlCAsInput = $True
+[System.Console]::TreatControlCAsInput = $True
 [System.Collections.ArrayList]$mbxAdCombo = New-Object System.Collections.ArrayList($null)
 
-foreach ($mbxuser in $adusers) 
+$Index = $ResumeIndex
+While ($Index -lt $mbxcount) 
 {
-    
     if ($Host.UI.RawUI.KeyAvailable -and ($Keypress = $Host.UI.RawUI.ReadKey("AllowCtrlC,NoEcho,IncludeKeyUp")))
     {
         if([Int]$Keypress.Character -eq 3)
         {
             Write-Warning "CTRL-C was used - Shutting down any running jobs before exiting the script."
-            Stop-MailboxAuditStatistics -aduser $mbxuser -Verbose
+            Stop-MailboxAuditStatistics -aduser $adusers[$index] -index $Index -Verbose
+            Break
         }
     }
    
     $percentage=(($i/$mbxcount)*90) + 10
-    write-progress -id 1 -activity "Processing $mbxcount on prem mailboxes" -PercentComplete ($percentage) -Status "Currently getting stats for mbx # $i ... $($mbxuser.DisplayName)"
-    $stats = Add-MailboxAuditStatistics($mbxuser)
+    write-progress -id 1 -activity "Processing $mbxcount on prem mailboxes" -PercentComplete ($percentage) -Status "Currently getting stats for mbx # $i ... $($adusers[$index].DisplayName)"
+    $stats = Add-MailboxAuditStatistics($ADUsers[$index])
 
     $null = $mbxAdCombo.Add((New-Object PSobject -property $stats))
     if ($flushCount -ge $flushLimit)
     {
-        Write-Verbose "Flushing collection $i and appending to $($script:mailboxAuditOutput)"
-        Stop-MailboxAuditStatistics -Flush $true -aduser $mbxuser -Verbose
+        Write-Verbose "Flushing at index $index and appending to $($script:mailboxAuditOutput)"
+        Stop-MailboxAuditStatistics -Flush $true -aduser $ADUsers[$index] -index $Index -Verbose
         $flushCount=0
     }
  
     $i++
+    $index++
     $flushCount++
 }
 
-$errfilename = $outputfolder + "Errorlog_" + $timestamp + ".txt" 
+# If we get through the entire list of AD users, we need to write output since last flush and cleanup resume file
+if ($index -eq $mbxcount) 
+{
+    $mbxAdCombo | export-csv -path $script:mailboxAuditOutput -notypeinformation -Append
 
-foreach ($err in $error) 
-{  
-    $logdata = $null 
-    $logdata = $err 
-    if ($logdata) 
-    { 
-        out-file -filepath $errfilename -Inputobject $logData -Append 
-    } 
+    if (Test-Path -Path $script:ResumeIndexOutput)
+    {
+        Remove-Item $script:ResumeIndexOutput -Force
+    }
 }
 
-$endDate = Get-Date
-$elapsedTime = $endDate - $startDate
-Write-Host "Report started at $($startDate)."
-Write-Host "Report ended at $($endDate)."
-Write-Host "Total Elapsed Time: $($elapsedTime)"
+Exit-MailboxAuditStatistics($error) -Verbose
