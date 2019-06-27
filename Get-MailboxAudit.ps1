@@ -5,16 +5,39 @@
     Version 1.0: 4/18/2019 finally upgraded sample script to fully featured
 .Description
 A comprehensive audit of mailboxes to identify mailboxes that haven't been logged into for a long time.
+.Parameter SearchBase
+Default is for Fabrikam users, so you'll either need to change the default in the script, or specify a searchbase with the syntax like "OU=Users,DC=fabrikam,DC=com"
+.Parameter Days
+The number of days a mailbox has had no logon recorded to trigger additional information gathering for the report
+.Parameter Resume
+By default, we try to resume, but this parameter allows a fresh start
 .Example
-
+Get-MailboxAudit.ps1 -SearchBase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Days 180 -Resume $true
 #>
-function Get-ADMailboxUsers {
-    # retrieves all mailbox users in Active Directory, flushes users and selected properties to file 
-    $ADMailboxUsers = Get-ADUser -searchbase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" 
-        `-and name -notlike "SystemMailbox{*"} -properties distinguishedname,msDS-parentdistname,title,description,displayname,msExchDelegateListLink,
-        `publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,extensionattribute4,extensionattribute5,lastlogondate,
-        `created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset
-    $ADMailboxUsers | export-csv -Path $script:ADUserOutput -NoTypeInformation    
+
+[cmdletbinding()]
+Param(
+    [Parameter(Mandatory=$false)]
+    [ValidateNotNullOrEmpty()]
+    [string]$SearchBase="OU=Users,DC=fabrikam,DC=com",
+
+    [Parameter(Mandatory=$false)]
+    [boolean]$Resume=$true,
+
+    [Parameter(Mandatory=$false)]
+    [ValidateRange(0,365)]
+    [int16]$days = 31
+
+)
+
+function Get-ADMailboxUsers($searchbase) {
+    # retrieves all mailbox users in Active Directory, flushes users and selected properties to file
+
+    $ADMailboxUsers = Get-ADUser -searchbase $searchbase -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" -and name -notlike "SystemMailbox{*"} -properties distinguishedname,msDS-parentdistname,title,description,displayname,msExchDelegateListLink,publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,extensionattribute4,extensionattribute5,lastlogondate,created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset
+
+    $ADMailboxUsers | export-csv -Path $script:ADUserOutput -NoTypeInformation -Force
+    $core = get-content -Path $script:ADUserOutput
+    Set-Content -Path $script:ADUserOutput -Value $searchbase,$core
     return $ADMailboxUsers
 }
 
@@ -70,12 +93,11 @@ function Exit-MailboxAuditStatistics($error) {
 }
 
 function Add-MailboxAuditStatistics ($aduser) {
-        [string]$RecipientTypeDetails=$null
         [string]$inboxRules=$null
         [string]$SendAs=$null
     
         $mailnickname=$aduser.mailnickname    
-        $mailbox = Get-MailboxStatistics -identity $mailnickname | Select-Object TotalItemSize,TotalDeletedItemSize,database,mailboxguid,lastlogontime,ProhibitSendquota
+        $mailbox = Get-MailboxStatistics -identity $aduser.distinguishedname | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime
     
         if($null -eq $mailbox.lastlogontime)
         {
@@ -83,36 +105,39 @@ function Add-MailboxAuditStatistics ($aduser) {
         }
         else{$MbxLastLogon=$mailbox.lastlogontime}
     
-        if ($mailbox.lastlogontime -gt $agedDate)
+        if ($mailbox.lastlogontime -le $agedDate)
         {
-            $RecipientTypeDetails = (get-recipient $aduser.displayname | Select-Object RecipientTypeDetails).RecipientTypeDetails
+            $MailboxProps = get-mailbox $aduser.distinguishedname | Select-Object RecipientTypeDetails,ProhibitSendQuota
+            $ProhibitSendQuota=$MailboxProps.ProhibitSendQuota.ToString()
+            Write-Information "Quota check is $ProhibitSendQuota"
+            $RecipientTypeDetails=($MailboxProps.RecipientTypeDetails | out-string).Trim()
+            Write-Information "Mailbox type is $RecipientTypeDetails"
             $inboxRules = Get-InboxRule -Mailbox $aduser.displayname | Select-Object name,enabled
             [string]$inboxRulesformatted = $inboxRules -split '-------'
-            [string]$SendAs = (Get-ADPermission -Identity $aduser.distinguishedname | Where-Object {$_.isinherited -eq $false -and $_.extendedrights -like "Send-As" -and $_.User.RawIdentity -ne "NT AUTHORITY\SELF"} | select user).user.RawIdentity
+            [string]$SendAs = (Get-ADPermission -Identity $aduser.distinguishedname | 
+            `Where-Object {$_.isinherited -eq $false -and $_.extendedrights -like "Send-As" -and $_.User.RawIdentity -ne "NT AUTHORITY\SELF"} | 
+            `Select-Object user).user.RawIdentity
         }
         [string]$publicdelegates = $aduser.publicdelegates.value
         [string]$publicdelegatesBL = $aduser.publicdelegatesBL.value
         [string]$fullMbxAccess = $aduser.msExchDelegateListLink.value
         
-        
-        $line = @{
+        # ordered helps maintain the arraylist's value pairs in this explicit orders
+        $line = [ordered]@{
             DisplayName=$aduser.displayname
+            Title=$aduser.Title
+            'Mailbox Type'= $RecipientTypeDetails
+            'Mailbox last logon'= $MbxLastLogon
+            'Mailbox Created'=$aduser.msexchwhenmailboxcreated
             'AD account created'=$aduser.created
             'AD password last set'=$aduser.passwordlastset
             'AD last logon date'=$aduser.lastlogondate
             'AD account last modified'=$aduser.modified
-              
             mailnickname=$mailnickname
-            'Mailbox Created'=$aduser.msexchwhenmailboxcreated
             database=(($aduser.homeMDB -split ',CN=')[0] -split 'CN=')[1]
-            Title=$aduser.Title
-    
             TotalItemSize=$mailbox.TotalItemSize
             TotalDeletedItemSize=$mailbox.TotalDeletedItemSize
-            
-            'Mailbox last logon'= $MbxLastLogon
-            ProhibitSendquota = $mailbox.ProhibitSendquota
-            
+            ProhibitSendquota = $ProhibitSendQuota
             description=$aduser.description
             Delegates=$publicdelegates
             'Delegate for'=$publicdelegatesBL
@@ -123,10 +148,7 @@ function Add-MailboxAuditStatistics ($aduser) {
             extensionattribute3=$aduser.extensionattribute3
             extensionattribute4=$aduser.extensionattribute4
             extensionattribute5=$aduser.extensionattribute5
-    
-            'Mailbox Type'= $RecipientTypeDetails
             'Inbox Rules'= $inboxRulesformatted
-    
             OU=$aduser.'msDS-parentdistname'
     
         }
@@ -142,7 +164,7 @@ $error.Clear()
 
 # Setup time date variables 
 $timestamp = Get-Date -Format o | ForEach-Object {$_ -replace ":", "."}
-$daystamp = Get-Date -Format 'MM-dd-yyyy'
+# $daystamp = Get-Date -Format 'MM-dd-yyyy'
 
 # Setup output variables script wide
 $script:outputFolder= "$($ENV:HOMEPATH)\desktop\"
@@ -151,36 +173,52 @@ $script:ADUserOutput = $script:outputFolder + "AD users with mailboxes.csv"
 $script:ResumeIndexOutput = $script:outputFolder + "ResumeMailboxAudit.log"
 $script:errfilename = $script:outputFolder + "Errorlog_" + $timestamp + ".txt" 
 
-$agedDate = (get-date).adddays(-365)
+$agedDate = (get-date).adddays($days)
 [int]$ResumeIndex = 0
 Set-ADServerSettings -ViewEntireForest $true
+#[string]$ADSearchBase = "OU=VIPs,OU=Departments,DC=fabrikam,DC=com"
 
 [int]$mbxcount = 0
 [int]$i=1  # variable for progress bar
 [int]$index = 0  # variable for iterating through primary mailbox user array 
-[int]$flushLimit = 100 # flush count to flush at
-[int]$flushCount = 0 # current flush count
+[int]$flushLimit = 100 # When to flush
+[int]$flushCount = 0 # counting to flush limit
 
 write-progress -id 1 -activity "Getting all on prem mailboxes from Active Directory" -PercentComplete (1)
 
 if (Test-Path -Path $script:ADUserOutput)
 {
-    Write-Information "Using previously saved AD user list from today, $($script:ADUserOutput)"
-    $ADUsers = Import-Csv -Path $script:ADUserOutput
-    if (Test-Path -Path $script:ResumeIndexOutput)
+    if ((get-content -Path $script:ADUserOutput | Select-Object -First 1) -eq $SearchBase)
     {
-        $ResumeContent = Get-Content $script:ResumeIndexOutput
-        $ResumeIndex = $ResumeContent[0]
-        [string]$ResumeMbxOutput = $ResumeContent[1]
-        $script:mailboxAuditOutput = $ResumeMbxOutput
+        Write-Information "Using previously saved AD user list from today, $($script:ADUserOutput)"
+        $ADUsers = get-content -Path $script:ADUserOutput | Select-Object -skip 1 | Out-String | ConvertFrom-Csv
+        
+        if ($Resume)
+        {
+        if (Test-Path -Path $script:ResumeIndexOutput)
+        {
+            $ResumeContent = Get-Content $script:ResumeIndexOutput
+            $ResumeIndex = $ResumeContent[0]
+            [string]$ResumeMbxOutput = $ResumeContent[1]
+            $script:mailboxAuditOutput = $ResumeMbxOutput
 
-        Write-Information "Resuming report at index of $ResumeIndex with output file $ResumeMbxOutput"
-        Write-Information "Index $ResumeIndex correlates to user $($adUsers[$ResumeIndex].displayname)" 
+            Write-Information "Resuming report at index of $ResumeIndex with output file $ResumeMbxOutput"
+            Write-Information "Index $ResumeIndex correlates to user $($adUsers[$ResumeIndex].displayname)" 
+        }
+        }
+        else {
+            Write-Information "... but starting fresh mailbox audit"}
     }
+    else
+    {
+        Write-Information "Performing new AD lookups as SearchBase has changed"
+        $adusers=Get-ADMailboxUsers($SearchBase)
+    }
+
 }
 else 
 {
-    $adusers=Get-ADMailboxUsers
+    $adusers=Get-ADMailboxUsers($SearchBase)
 }
 
 $i = $ResumeIndex
