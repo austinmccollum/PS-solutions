@@ -12,7 +12,7 @@ The number of days a mailbox has had no logon recorded to trigger additional inf
 .Parameter Resume
 By default, we try to resume, but this parameter allows a fresh start
 .Example
-Get-MailboxAudit.ps1 -SearchBase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Days 180 -Resume $true
+Get-MailboxAudit.ps1 -SearchBase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Days 180 -Resume $true -informationpreference 'continue'
 #>
 
 [cmdletbinding()]
@@ -109,9 +109,9 @@ function Add-MailboxAuditStatistics ($aduser) {
         {
             $MailboxProps = get-mailbox $aduser.distinguishedname | Select-Object RecipientTypeDetails,ProhibitSendQuota
             $ProhibitSendQuota=$MailboxProps.ProhibitSendQuota.ToString()
-            Write-Information "Quota check is $ProhibitSendQuota"
+            Write-Debug "Quota check is $ProhibitSendQuota"
             $RecipientTypeDetails=($MailboxProps.RecipientTypeDetails | out-string).Trim()
-            Write-Information "Mailbox type is $RecipientTypeDetails"
+            Write-Debug "Mailbox type is $RecipientTypeDetails"
             $inboxRules = Get-InboxRule -Mailbox $aduser.displayname | Select-Object name,enabled
             [string]$inboxRulesformatted = $inboxRules -split '-------'
             [string]$SendAs = (Get-ADPermission -Identity $aduser.distinguishedname | 
@@ -123,6 +123,7 @@ function Add-MailboxAuditStatistics ($aduser) {
         [string]$fullMbxAccess = $aduser.msExchDelegateListLink.value
         
         # ordered helps maintain the arraylist's value pairs in this explicit orders
+        #  order isn't respected when script is run from ISE
         $line = [ordered]@{
             DisplayName=$aduser.displayname
             Title=$aduser.Title
@@ -226,6 +227,8 @@ $mbxcount = ($adusers | Measure-Object).count
 
 write-progress -id 1 -activity "Getting all Audit info for $mbxcount on prem mailboxes" -PercentComplete (10)
 Write-Host "Press the Ctrl-C key to stop and save progress so far..."
+
+# Ctrl-C can't be constrained / treated as input from ISE
 [System.Console]::TreatControlCAsInput = $True
 [System.Collections.ArrayList]$mbxAdCombo = New-Object System.Collections.ArrayList($null)
 
