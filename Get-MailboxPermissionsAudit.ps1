@@ -294,7 +294,6 @@ Measure-Command {
 
     If ($PermCount -gt 0) {
         Write-Action "Exporting permissions to file..."
-        Write-Host "what? ... $($Script:Permissions[2])"
         Export-Permissions
     }
 
