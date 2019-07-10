@@ -3,7 +3,7 @@
 ================================================================================
 Programmed By:  Joshua Loos (jloos@microsoft.com)
 Programmed Date:  09/20/2016
-Last Modified:    05/31/2017
+Last Modified:    07/10/2019 [austinmc@microsoft.com]
  ------------------------------------------------------------------------
 DISCLAIMER: Use this powershell script at your own risk and willingness.
 THIS CODE IS MADE AVAILABLE AS IS, WITHOUT WARRANTY OF ANY KIND. THE ENTIRE RISK
@@ -31,6 +31,7 @@ OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
        5.0 Cleaned up script with new functions and more comments
        6.0 Improved error handling, purged customer-specific logic
 	   7.0 Added checks for full mailbox permissions and quick output of unique relationships
+       8.0 Rehauled script - trimmed down to just delegate, full mailbox and sendas with no folder level checks
 
 .PARAMETER OU
    Optional.  Specify a OU from which to query users.  Do not use this parameter
@@ -39,27 +40,18 @@ OF THE USE OR THE RESULTS FROM THE USE OF THIS CODE REMAINS WITH THE USER.
    Optional.  Specify the location of a CSV file that contains a list of primary
    SMTP addresses under the column, "PrimarySMTPAddress".  Do not use this parameter
    when specifying an OU
-.PARAMETER FolderAccess
-   Optional.  This parameter is used to tell the script the scope of folder level
-   permissions to pull.  It accepts three values: AllFolders (the default value; pull
-   everything), DefaultFolders (only grab permissions for folders like Inbox, Sent Items,
-   Calendar, etc.), and CalendarOnly (only pull permissions for the calendar folder).
+
 .EXAMPLE
-  '.\BatchToolkit_GetPermissions_v6.ps1' -ImportList "EarlyAdopters.csv"
+  '.\Get-MailboxPermissionAudit.ps1' -ImportList "EarlyAdopters.csv"
 .EXAMPLE
-  '.\BatchToolkit_GetPermissions_v6.ps1' -OU "OU=Contractors,CN=Users,DC=contoso,DC=com" -FolderAccess "CalendarOnly"
-.EXAMPLE
-  '.\BatchToolkit_GetPermissions_v6.ps1' -OU "OU=Chicago,CN=Users,DC=contoso,DC=com" -AnalyzeBatches "ChicagoBatches-20160101T120000.csv"
-.EXAMPLE
-  '.\BatchToolkit_GetPermissions_v6.ps1' -AnalyzeBatches "ChicagoBatches-20160101T120000.csv" -UsePermissionSet "ChicagoPermissions-20160101T110000.csv"
+  '.\Get-MailboxPermissionAudit.ps1' -OU "OU=Contractors,CN=Users,DC=contoso,DC=com"
 #>
 
 
 #region Parameters
 Param(
     [string]$OU,
-    [string]$ImportList,
-    [string][ValidateSet("AllFolders", "DefaultFolders", "CalendarOnly")]$FolderAccess="AllFolders"
+    [string]$ImportList
 )
 #endregion
 
@@ -74,7 +66,8 @@ $Domain = "contoso.local" # Domain only affects the default OU location if no OU
 #region Script Setup
 # Do not change these variables
 [array]$Script:UserList = @()
-[array]$Script:Permissions = @()
+[System.Collections.ArrayList]$Script:Permissions = New-Object System.Collections.ArrayList($null)
+#[array]$Script:Permissions = @()
 [array]$Script:MigrationBatches = @()
 
 # Default path if no OU is specified
@@ -122,7 +115,6 @@ Function Draw-RunSettings {
     Write-Host " Domain:`t`t$Domain"
     If (-not $ImportList) { Write-Host " OU:`t`t`t$OU" } Else { Write-Host " OU:`t`t`tFalse" }
     If ($ImportList) { Write-Host " ImportList:`t`t$ImportList"} Else { Write-Host " ImportList:`t`tFalse" }
-    Write-Host " FolderAccess:`t`t$FolderAccess`n"
 }
 
 Function Write-Action ($Message) {
@@ -176,7 +168,7 @@ Function Get-UserList {
     }
 }
 
-Function Get-Permissions { # Iterate through each user and grab folder level, Send on Behalf, and Send-As permissions, as well as their own data
+Function Get-Permissions { # Iterate through each user and grab Send-As permissions, Full Mailbox Access and Delegate Access
     $i=0
     ForEach ($User in $Script:UserList) {
         $i++
@@ -185,15 +177,13 @@ Function Get-Permissions { # Iterate through each user and grab folder level, Se
         $HasDelegate = $false
 
         # User data from Get-ADUser object
-        $EmailAddress = @{Expression={$User.mail};Label="PrimarySMTP"}
-        $FirstName = @{Expression={$User.givenname};Label="FirstName"}
-        $LastName = @{Expression={$User.surname};Label="LastName"}
-        $DisplayName= @{Expression={$User.name};Label="Display Name"}
-        $UPN = @{Expression={$User.UserPrincipalName};Label="UPN"}
-        $DistinguishedName= @{'DistinguishedName'=$User.DistinguishedName}
-        $RecipientType= Switch ($User.msExchRecipientTypeDetails)
-        
-        {
+        $EmailAddress = $User.mail
+        $FirstName = $User.givenname
+        $LastName = $User.surname
+        $DisplayName= $User.name
+        $UPN = $User.UserPrincipalName
+        $DistinguishedName= $User.DistinguishedName
+        $RecipientType= Switch ($User.msExchRecipientTypeDetails) {
             1 {"User Mailbox"}
             4 {"Shared Mailbox"}
             16 {"Room Mailbox"}
@@ -217,39 +207,69 @@ Function Get-Permissions { # Iterate through each user and grab folder level, Se
         If ($SAPermissions) {
             $HasDelegate = $true
             ForEach ($Perm in $SAPermissions) {
-                $DelegateName = @{"Delegate" = $Perm.ToString().Replace("NT User:","")}
-                $DelegateRight = @{"Rights" = "SendAs"}
-                $Script:Permissions += $Emailaddress,$UPN,$FirstName,$LastName,$DisplayName,$RecipientType,$DistinguishedName,$DelegateName,$DelegateRight
+                $DelegateName = $Perm.ToString().Replace("NT User:","")
+                $SendAsRow = [ordered]@{
+                    'First Name' = $FirstName
+                    'Last Name' = $LastName
+                    'Primary SMTP' = $EmailAddress
+                    'Display Name' = $DisplayName
+                    UPN = $UPN
+                    'DistringuishedName' = $DistinguishedName
+                    'Recipient Type' = $RecipientType
+                    'Delegate Name' = $DelegateName
+                    'Delegate Right' = "SendAs"
+                }
+                $null = $Script:Permissions.Add((New-Object PSobject -property $SendAsRow))
             }
         }
         # End of send-as permissions
 
-	    # Full Mailbox Permissions added by austinmc - although this could be non-recipients, keeping the recipient checks in place for now
+	    # Full Mailbox Permissions added by austinmc
         #  this attribute lists all the other mailboxes your mailbox has FullAccess to, unless AutoMapping was set to $false when assigning the permission
 	    If ($User.msExchDelegateListLink) { 
             $HasDelegate = $true
-		    ForEach ($delegateLink in $User.msExchDelegateListLink) {
-                $DelegateName = @{"Delegate" = $user.msExchDelegateListLink}
-                $DelegateRight = @{"Rights" = "Full Mailbox"}
-                $Script:Permissions += $Emailaddress,$UPN,$FirstName,$LastName,$DisplayName,$RecipientType,$DistinguishedName,$DelegateName,$DelegateRight
-                    }
+		    ForEach ($DelegateLink in $User.msExchDelegateListLink) {
+                $DelegateName = $DelegateLink
+                $FullMbxRow = [ordered]@{
+                    'First Name' = $FirstName
+                    'Last Name' = $LastName
+                    'Primary SMTP' = $EmailAddress
+                    'Display Name' = $DisplayName
+                    UPN = $UPN
+                    'DistringuishedName' = $DistinguishedName
+                    'Recipient Type' = $RecipientType
+                    'Delegate Name' = $DelegateName
+                    'Delegate Right' = "Full Mailbox"
                 }
+                $null = $Script:Permissions.Add((New-Object PSobject -property $FullMbxRow))    
+            
             }
         }		
 
-        # If no data has been found up until this point, this user is reported as having no delegate dependents
+        <# If no data has been found up until this point, this user is reported as having no delegate dependents
         If ($HasDelegate -eq $false) {
-            $FolderName = @{Expression={""};Label="FolderName"}
-            $AccessRights = @{Expression={"None"};Label="AccessRights"}
-            $Script:Permissions += "" | Select $Emailaddress,$UserUPN,$UserFirstName,$UserLastName,$UserDisplayName,$MailboxSize,$UserRecipientType,$UserOffice,@{Expression={"n/a"};Label="DelegatePrimarySMTP"},@{Expression={"n/a"};Label="DelegateUPN"},@{Expression={"n/a"};Label="DelegateFirstName"},@{Expression={"n/a"};Label="DelegateLastName"},@{Expression={"n/a"};Label="DelegateDisplayName"},@{Expression={"n/a"};Label="DelegateTotalMailboxSize"},@{Expression={"n/a"};Label="DelegateRecipientType"},@{Expression={"n/a"};Label="DelegateOffice"},$FolderName,$AccessRights,@{Expression={""};Label="GroupDependencies"}
-        }
+            $DelegateName = @{"Delegate" = "None"}
+            $DelegateRight = @{"Rights" = "None"}
+            $NoneRow = @{
+                'First Name' = $FirstName
+                'Last Name' = $LastName
+                'Primary SMTP' = $EmailAddress
+                'Display Name' = $DisplayName
+                UPN = $UPN
+                'DistringuishedName' = $DistinguishedName
+                'Recipient Type' = $RecipientType
+                'Delegate Name' = $DelegateName
+                'Delegate Right' = $DelegateRight
+            }
+            $null = $Script:Permissions.Add((New-Object PSobject -property $SendAsRow))
+        } #>
     }
 }
 
-Function Export-Permissions { # Export the permissions to a CSV file.  If AnalyzeBatches was used, the output is a subset of those permissions whose relationship is not satisfied by the batch suggestions.
+Function Export-Permissions # Export the permissions to a CSV file.  If AnalyzeBatches was used, the output is a subset of those permissions whose relationship is not satisfied by the batch suggestions.
 {
 
-    $Script:Permissions | Export-CSV ".\$OutputLocation" -NoTypeInformation
+    $Script:Permissions | Export-CSV -path ".\$OutputLocation" -NoTypeInformation
 
 }
 #endregion
@@ -274,6 +294,7 @@ Measure-Command {
 
     If ($PermCount -gt 0) {
         Write-Action "Exporting permissions to file..."
+        Write-Host "what? ... $($Script:Permissions[2])"
         Export-Permissions
     }
 
