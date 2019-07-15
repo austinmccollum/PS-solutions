@@ -77,9 +77,7 @@ If (-not $OU -and -not $AnalyzeBatches) { $OU = "CN=Users,DC=$($SplitDomain[0]),
 # The following few lines are used later to pull Send As permissions
 $DSE = [ADSI]"LDAP://Rootdse"
 $EXT = [ADSI]("LDAP://CN=Extended-Rights," + $DSE.ConfigurationNamingContext)
-$DN = [ADSI]"LDAP://$($DSE.DefaultNamingContext)"
-$DSLookFor = New-Object System.DirectoryServices.DirectorySearcher($DN)
-$Right = $EXT.psbase.Children | ? { $_.DisplayName -eq "Send As" }
+$Right = $EXT.psbase.Children | Where-Object { $_.DisplayName -eq "Send As" }
 
 # Determining the output name of the report
 $RunTime = $(Get-Date -Format "yyyyMMddTHHmmss")
@@ -96,7 +94,7 @@ If (-not (Get-Module -Name ActiveDirectory)) {
 
 
 #regions Functions
-Function Draw-Banner {
+Function Start-DrawBanner {
     Write-Host "`n############################################################"
     Write-Host "#                " -NoNewline
     Write-Host "Exchange Permissions Dump" -ForegroundColor Cyan -NoNewline
@@ -110,7 +108,7 @@ Function Draw-Banner {
     Write-Host "############################################################`n"
 }
 
-Function Draw-RunSettings {
+Function Start-DrawRunSettings {
     If ($OU) { Write-Host " Run Mode:`t`tPermission Dump" }
     Write-Host " Domain:`t`t$Domain"
     If (-not $ImportList) { Write-Host " OU:`t`t`t$OU" } Else { Write-Host " OU:`t`t`tFalse" }
@@ -133,12 +131,12 @@ Function Get-UserList {
         $ImportList = Import-Csv $ImportList
         Foreach ($Row in $ImportList) {
             $ImportUser = $($Row.PrimarySMTPAddress)
-            try { $Recipients = Get-Recipient $ImportUser.Trim() -ErrorAction Stop | Select SamAccountName,RecipientTypeDetails,PrimarySMTPAddress }
+            try { $Recipients = Get-Recipient $ImportUser.Trim() -ErrorAction Stop | Select-Object SamAccountName,RecipientTypeDetails,PrimarySMTPAddress }
             catch { Write-ErrorLog "Unable to import user $ImportUser, Get-Recipient command failed.  Error Message: $($_.ToString())" }
             Foreach ($Recipient in $Recipients) {
                 If ($Recipient.RecipientTypeDetails -match "Mailbox" -and $Recipient.RecipientTypeDetails -notlike "*Remote*") {
                     try {
-                        $UserObject = Get-ADUser $($Recipient.SamAccountName) -Properties msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails | Select msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails
+                        $UserObject = Get-ADUser $($Recipient.SamAccountName) -Properties msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails | Select-Object msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails
                         If ($UserObject.count -gt 1) {
                             Write-ErrorLog "Unable to import user.  Duplicate users found for $ImportUser (SAM: $($Recipient.SamAccountName))."
                         } Else {
@@ -155,7 +153,7 @@ Function Get-UserList {
     Else { # Used when the OU parameter is specified, imports all users from that particular OU
         try {
             If ([ADSI]::Exists("LDAP://$OU")) {
-                $Script:UserList = Get-ADUser -SearchScope Subtree -SearchBase $OU -ResultSetSize $null -Filter {(objectCategory -eq "person") -and (objectClass -eq "user") -and (msExchRecipientTypeDetails -like "*")} -Properties msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails | Select msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails
+                $Script:UserList = Get-ADUser -SearchScope Subtree -SearchBase $OU -ResultSetSize $null -Filter {(objectCategory -eq "person") -and (objectClass -eq "user") -and (msExchRecipientTypeDetails -like "*")} -Properties msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails | Select-Object msExchDelegateListLink,PublicDelegates,PublicDelegatesBL,GivenName,Surname,DistinguishedName,UserPrincipalName,mail,name,msExchRecipientTypeDetails
             } Else {
                 Write-ErrorLog "Unable to get users, the OU that was specified does not exist."
             }
@@ -173,8 +171,6 @@ Function Get-Permissions { # Iterate through each user and grab Send-As permissi
     ForEach ($User in $Script:UserList) {
         $i++
         Write-Progress -Activity "Grabbing permissions.." -Status "Processing user $($User.mail) ($i of $($Script:UserList.count))" -PercentComplete $($i/$($Script:UserList.count)*100)
-
-        $HasDelegate = $false
 
         # User data from Get-ADUser object
         $EmailAddress = $User.mail
@@ -201,11 +197,10 @@ Function Get-Permissions { # Iterate through each user and grab Send-As permissi
         $UserDN = [ADSI]("LDAP://$($User.DistinguishedName)")
         $SAPermissions = New-Object -TypeName System.Collections.ArrayList
         # Do not include inherited permissions. Only explicit permissions are migrated https://technet.microsoft.com/en-us/library/jj200581(v=exchg.150).aspx
-        $UserDN.psbase.ObjectSecurity.Access | ? { ($_.ObjectType -eq [GUID]$Right.RightsGuid.Value) -and ($_.IsInherited -eq $false) } | Select -ExpandProperty IdentityReference | %{
+        $UserDN.psbase.ObjectSecurity.Access | Where-Object { ($_.ObjectType -eq [GUID]$Right.RightsGuid.Value) -and ($_.IsInherited -eq $false) } | Select-Object -ExpandProperty IdentityReference | ForEach-Object{
             If($_ -notlike "NT AUTHORITY\SELF" -and $_ -notlike "*S-1-5-21*") { [void]$SAPermissions.Add($_) }
         }
         If ($SAPermissions) {
-            $HasDelegate = $true
             ForEach ($Perm in $SAPermissions) {
                 $DelegateName = $Perm.ToString().Replace("NT User:","")
                 $SendAsRow = [ordered]@{
@@ -227,7 +222,6 @@ Function Get-Permissions { # Iterate through each user and grab Send-As permissi
 	    # Full Mailbox Permissions added by austinmc
         #  this attribute lists all the other mailboxes your mailbox has FullAccess to, unless AutoMapping was set to $false when assigning the permission
 	    If ($User.msExchDelegateListLink) { 
-            $HasDelegate = $true
 		    ForEach ($DelegateLink in $User.msExchDelegateListLink) {
                 $DelegateName = $DelegateLink
                 $FullMbxRow = [ordered]@{
@@ -245,24 +239,6 @@ Function Get-Permissions { # Iterate through each user and grab Send-As permissi
             
             }
         }		
-
-        <# If no data has been found up until this point, this user is reported as having no delegate dependents
-        If ($HasDelegate -eq $false) {
-            $DelegateName = @{"Delegate" = "None"}
-            $DelegateRight = @{"Rights" = "None"}
-            $NoneRow = @{
-                'First Name' = $FirstName
-                'Last Name' = $LastName
-                'Primary SMTP' = $EmailAddress
-                'Display Name' = $DisplayName
-                UPN = $UPN
-                'DistringuishedName' = $DistinguishedName
-                'Recipient Type' = $RecipientType
-                'Delegate Name' = $DelegateName
-                'Delegate Right' = $DelegateRight
-            }
-            $null = $Script:Permissions.Add((New-Object PSobject -property $SendAsRow))
-        } #>
     }
 }
 
@@ -277,19 +253,19 @@ Function Export-Permissions # Export the permissions to a CSV file.  If AnalyzeB
 
 #region Main
 Measure-Command {
-    cls
-    Draw-Banner
-    Draw-RunSettings
+    Clear-Host
+    Start-DrawBanner
+    Start-DrawRunSettings
 
     Set-ADServerSettings -ViewEntireForest:$true
 
     Write-Action "Getting list of users..."
     Get-UserList
-    Write-Action "Found $(($Script:UserList | Measure).Count) recipients."
+    Write-Action "Found $(($Script:UserList | Measure-Object).Count) recipients."
 
     Write-Action "Getting permissions..."
     Get-Permissions
-    $PermCount = $($Script:Permissions | Measure).Count
+    $PermCount = $($Script:Permissions | Measure-Object).Count
     Write-Action "Found $PermCount delegation type permissions on those recipients."
 
     If ($PermCount -gt 0) {
