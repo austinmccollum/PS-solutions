@@ -14,8 +14,8 @@ foreach($dbmap in $dbmaps){
 
 	foreach($db in $dbs){
 
-            $dbPath = $dbmap.DatabasesRootFolder + $db + "\" + $db + ".db"
-            $logPath = $dbmap.DatabasesRootFolder + $db + "\" + $db + ".log"
+            $dbPath = $dbmap.DatabasesRootFolder + "\" + $db + "\" + $db + ".db"
+            $logPath = $dbmap.DatabasesRootFolder + "\" + $db + "\" + $db + ".log"
             write-host "DB $db"
             $oldDbPath=$jsconfig.SelectNodes("//Path")[$i]
             $oldDbPath.InnerText = $dbPath
