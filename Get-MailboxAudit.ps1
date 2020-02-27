@@ -3,6 +3,8 @@
     Name: Get-MailboxAudit.ps1
     Author: Austin McCollum [austinmc@microsoft.com]
     Version 1.0: 4/18/2019 finally upgraded sample script to fully featured
+    Version 1.1: 10/30/2019 revised to remove AD cached info
+    Version 1.2: 2/19/2020 get-mailboxstatistics per user too slow.  calling mailboxstatistics per server instead.
 .Description
 A comprehensive audit of mailboxes to identify mailboxes that haven't been logged into for a long time.
 .Parameter SearchBase
@@ -10,9 +12,9 @@ Default is for Fabrikam users, so you'll either need to change the default in th
 .Parameter Days
 The number of days a mailbox has had no logon recorded to trigger additional information gathering for the report
 .Parameter Resume
-By default, we try to resume, but this parameter allows a fresh start
+By default, we try to resume based on the existence of a temp file.  Setting this parameter to $false allows a fresh start
 .Example
-Get-MailboxAudit.ps1 -SearchBase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Days 180 -Resume $true -informationpreference 'continue'
+Get-MailboxAudit.ps1 -SearchBase "OU=VIPs,OU=Departments,DC=fabrikam,DC=com" -Days 180 -Resume $false -InformationAction 'continue'
 #>
 
 [cmdletbinding()]
@@ -26,19 +28,32 @@ Param(
 
     [Parameter(Mandatory=$false)]
     [ValidateRange(0,365)]
-    [int16]$days = 31
+    [int16]$days = 180
 
 )
 
 function Get-ADMailboxUsers($searchbase) {
     # retrieves all mailbox users in Active Directory, flushes users and selected properties to file
 
-    $ADMailboxUsers = Get-ADUser -searchbase $searchbase -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" -and name -notlike "SystemMailbox{*"} -properties distinguishedname,msDS-parentdistname,title,description,displayname,msExchDelegateListLink,publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,extensionattribute4,extensionattribute5,lastlogondate,created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset
+    $ADMailboxUsers = Get-ADUser -searchbase $searchbase -Filter {homeMDB -like "*" -and displayname -notlike "HealthMailbox*" -and name -notlike "SystemMailbox{*"} -properties distinguishedname,msDS-parentdistname,title,description,displayname,msExchDelegateListLink,publicdelegates,publicdelegatesBL,extensionattribute1,extensionattribute2,extensionattribute3,extensionattribute4,extensionattribute5,lastlogondate,created,modified,homeMDB,mailnickname,msexchwhenmailboxcreated,passwordlastset,legacyExchangeDN
 
     $ADMailboxUsers | export-csv -Path $script:ADUserOutput -NoTypeInformation -Force
     $core = get-content -Path $script:ADUserOutput
     Set-Content -Path $script:ADUserOutput -Value $searchbase,$core
     return $ADMailboxUsers
+}
+
+function Get-ServerMailboxStatistics() {
+    # retrieve all mailbox statistics per server to reduce overall runtime of script
+
+    $ExchangeServers = Get-ExchangeServer | ?{$_.serverrole -like "Mailbox"}
+    $MBXStatsAll = foreach($ExchangeServer in $ExchangeServers){
+        Get-MailboxStatistics -server $ExchangeServer -noADLookup | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn
+        Write-Information "Success - retrieved Mailbox Statistics for all mailboxes from server $ExchangeServer"
+    }
+    Write-Information "$($MBXStatsAll.count) total mailboxes"
+    $MBXStatsAll | export-csv -Path $script:MBXStatsOutput -NoTypeInformation -Force
+    return $MBXStatsAll
 }
 
 function Stop-MailboxAuditStatistics() {
@@ -96,16 +111,19 @@ function Add-MailboxAuditStatistics ($aduser) {
         [string]$inboxRules=$null
         [string]$SendAs=$null
     
-        $mailnickname=$aduser.mailnickname    
-        $mailbox = Get-MailboxStatistics -identity $aduser.distinguishedname | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime
-    
+        $mailnickname=$aduser.mailnickname 
+        # This method calling individual mailboxstatistics was too slow   
+        # $mailbox = Get-MailboxStatistics -identity $aduser.distinguishedname | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime
+        
+        $mailbox = $MBXStatsAll.where({$_.legacydn -eq $aduser.legacyExchangeDN})
+
         if($null -eq $mailbox.lastlogontime)
         {
             $MbxLastLogon="Never"
         }
         else{$MbxLastLogon=$mailbox.lastlogontime}
     
-        if ($mailbox.lastlogontime -le $agedDate)
+        if ($mailbox.lastlogontime -le $agedDate -or -$MbxLastLogon -eq "Never")
         {
             $MailboxProps = get-mailbox $aduser.distinguishedname | Select-Object RecipientTypeDetails,ProhibitSendQuota
             $ProhibitSendQuota=$MailboxProps.ProhibitSendQuota.ToString()
@@ -171,6 +189,7 @@ $timestamp = Get-Date -Format o | ForEach-Object {$_ -replace ":", "."}
 $script:outputFolder= "$($ENV:HOMEPATH)\desktop\"
 $script:mailboxAuditOutput = $script:outputFolder + "MBX audit" + $timestamp + ".csv"
 $script:ADUserOutput = $script:outputFolder + "AD users with mailboxes.csv"
+$script:MBXStatsOutput = $script:outputFolder + "MBX stats for all mailboxes.csv"
 $script:ResumeIndexOutput = $script:outputFolder + "ResumeMailboxAudit.log"
 $script:errfilename = $script:outputFolder + "Errorlog_" + $timestamp + ".txt" 
 
@@ -222,13 +241,22 @@ else
     $adusers=Get-ADMailboxUsers($SearchBase)
 }
 
+if (Test-Path -Path $script:MBXStatsOutput)
+{
+    Write-Information "Using previously saved Mailbox statistics from earlier, $($script:MBXStatsOutput)"
+    $MBXstatsAll = get-content -Path $script:MBXStatsOutput 
+}
+else {
+    $MBXstatsAll = Get-ServerMailboxStatistics
+}
+
 $i = $ResumeIndex
 $mbxcount = ($adusers | Measure-Object).count
 
 write-progress -id 1 -activity "Getting all Audit info for $mbxcount on prem mailboxes" -PercentComplete (10)
 Write-Host "Press the Ctrl-C key to stop and save progress so far..."
 
-# Ctrl-C can't be constrained / treated as input from ISE
+# Ctrl-C can't be constrained or treated as input from ISE
 [System.Console]::TreatControlCAsInput = $True
 [System.Collections.ArrayList]$mbxAdCombo = New-Object System.Collections.ArrayList($null)
 
