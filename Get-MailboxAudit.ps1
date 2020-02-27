@@ -47,13 +47,13 @@ function Get-ServerMailboxStatistics() {
     # retrieve all mailbox statistics per server to reduce overall runtime of script
 
     $ExchangeServers = Get-ExchangeServer | ?{$_.serverrole -like "Mailbox"}
-    $MBXStatsAll = foreach($ExchangeServer in $ExchangeServers){
-        Get-MailboxStatistics -server $ExchangeServer -noADLookup | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn
+    $script:MBXStatsAll = foreach($ExchangeServer in $ExchangeServers){
+        Get-MailboxStatistics -server $ExchangeServer -noADLookup | Select TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn,DisplayName
         Write-Information "Success - retrieved Mailbox Statistics for all mailboxes from server $ExchangeServer"
     }
-    Write-Information "$($MBXStatsAll.count) total mailboxes"
-    $MBXStatsAll | export-csv -Path $script:MBXStatsOutput -NoTypeInformation -Force
-    return $MBXStatsAll
+    Write-Information "$($script:MBXStatsAll.count) total mailboxes"
+    $script:MBXStatsAll | export-csv -Path $script:MBXStatsOutput -NoTypeInformation -Force
+    return $script:MBXStatsAll
 }
 
 function Stop-MailboxAuditStatistics() {
@@ -112,24 +112,23 @@ function Add-MailboxAuditStatistics ($aduser) {
         [string]$SendAs=$null
     
         $mailnickname=$aduser.mailnickname 
-        # This method calling individual mailboxstatistics was too slow   
-        # $mailbox = Get-MailboxStatistics -identity $aduser.distinguishedname | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime
-        
-        $mailbox = $MBXStatsAll.where({$_.legacydn -eq $aduser.legacyExchangeDN})
+        Write-Verbose "aduser legdn $($aduser.legacyExchangeDN)"
+        $mailbox = $script:MBXStatsAll.where({$_.legacydn -eq ($aduser.legacyExchangeDN)})
+        Write-Verbose "Looking at $($mailbox.DisplayName)"
 
         if($null -eq $mailbox.lastlogontime)
         {
             $MbxLastLogon="Never"
         }
         else{$MbxLastLogon=$mailbox.lastlogontime}
-    
+        write-Verbose "Last Mailbox Logon Time for $($mailbox.legacyexchangeDN) is... $MBXLastLogon"
         if ($mailbox.lastlogontime -le $agedDate -or -$MbxLastLogon -eq "Never")
         {
             $MailboxProps = get-mailbox $aduser.distinguishedname | Select-Object RecipientTypeDetails,ProhibitSendQuota
             $ProhibitSendQuota=$MailboxProps.ProhibitSendQuota.ToString()
-            Write-Debug "Quota check is $ProhibitSendQuota"
+            Write-Verbose "Quota check is $ProhibitSendQuota"
             $RecipientTypeDetails=($MailboxProps.RecipientTypeDetails | out-string).Trim()
-            Write-Debug "Mailbox type is $RecipientTypeDetails"
+            Write-Verbose "Mailbox type is $RecipientTypeDetails"
             $inboxRules = Get-InboxRule -Mailbox $aduser.displayname | Select-Object name,enabled
             [string]$inboxRulesformatted = $inboxRules -split '-------'
             [string]$SendAs = (Get-ADPermission -Identity $aduser.distinguishedname | 
@@ -193,7 +192,7 @@ $script:MBXStatsOutput = $script:outputFolder + "MBX stats for all mailboxes.csv
 $script:ResumeIndexOutput = $script:outputFolder + "ResumeMailboxAudit.log"
 $script:errfilename = $script:outputFolder + "Errorlog_" + $timestamp + ".txt" 
 
-$agedDate = (get-date).adddays($days)
+$agedDate = (get-date).adddays(-($days))
 [int]$ResumeIndex = 0
 Set-ADServerSettings -ViewEntireForest $true
 #[string]$ADSearchBase = "OU=VIPs,OU=Departments,DC=fabrikam,DC=com"
@@ -244,10 +243,10 @@ else
 if (Test-Path -Path $script:MBXStatsOutput)
 {
     Write-Information "Using previously saved Mailbox statistics from earlier, $($script:MBXStatsOutput)"
-    $MBXstatsAll = get-content -Path $script:MBXStatsOutput 
+    $script:MBXstatsAll = get-content -Path $script:MBXStatsOutput | out-string | ConvertFrom-Csv
 }
 else {
-    $MBXstatsAll = Get-ServerMailboxStatistics
+    $script:MBXstatsAll = Get-ServerMailboxStatistics
 }
 
 $i = $ResumeIndex
