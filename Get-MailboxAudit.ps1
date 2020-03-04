@@ -110,7 +110,7 @@ function Exit-MailboxAuditStatistics($error) {
 function Add-MailboxAuditStatistics ($aduser) {
         [string]$inboxRules=$null
         [string]$SendAs=$null
-    
+        [datetime]$mbxlogoncompare = $mailbox.lastlogontime
         $mailnickname=$aduser.mailnickname 
         Write-Verbose "aduser legdn $($aduser.legacyExchangeDN)"
         $mailbox = $script:MBXStatsAll.where({$_.legacydn -eq ($aduser.legacyExchangeDN)})
@@ -122,7 +122,7 @@ function Add-MailboxAuditStatistics ($aduser) {
         }
         else{$MbxLastLogon=$mailbox.lastlogontime}
         write-Verbose "Last Mailbox Logon Time for $($mailbox.legacyexchangeDN) is... $MBXLastLogon"
-        if ($mailbox.lastlogontime -le $agedDate -or -$MbxLastLogon -eq "Never")
+        if ($mbxlogoncompare -le $agedDate -or ($MbxLastLogon -eq "Never"))
         {
             $MailboxProps = get-mailbox $aduser.distinguishedname | Select-Object RecipientTypeDetails,ProhibitSendQuota
             $ProhibitSendQuota=$MailboxProps.ProhibitSendQuota.ToString()
@@ -192,7 +192,7 @@ $script:MBXStatsOutput = $script:outputFolder + "MBX stats for all mailboxes.csv
 $script:ResumeIndexOutput = $script:outputFolder + "ResumeMailboxAudit.log"
 $script:errfilename = $script:outputFolder + "Errorlog_" + $timestamp + ".txt" 
 
-$agedDate = (get-date).adddays(-($days))
+[datetime]$agedDate = (get-date).adddays(-($days))
 [int]$ResumeIndex = 0
 Set-ADServerSettings -ViewEntireForest $true
 #[string]$ADSearchBase = "OU=VIPs,OU=Departments,DC=fabrikam,DC=com"
