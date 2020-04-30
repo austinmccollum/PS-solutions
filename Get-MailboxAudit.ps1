@@ -110,10 +110,12 @@ function Exit-MailboxAuditStatistics($error) {
 function Add-MailboxAuditStatistics ($aduser) {
         [string]$inboxRules=$null
         [string]$SendAs=$null
-        [datetime]$mbxlogoncompare = $mailbox.lastlogontime
+        
         $mailnickname=$aduser.mailnickname 
         Write-Verbose "aduser legdn $($aduser.legacyExchangeDN)"
         $mailbox = $script:MBXStatsAll.where({$_.legacydn -eq ($aduser.legacyExchangeDN)})
+
+        [datetime]$mbxlogoncompare = $mailbox.lastlogontime
         Write-Verbose "Looking at $($mailbox.DisplayName)"
 
         if($null -eq $mailbox.lastlogontime)
