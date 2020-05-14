@@ -48,7 +48,7 @@ function Get-ServerMailboxStatistics() {
 
     $ExchangeServers = Get-ExchangeServer | Where-Object{$_.serverrole -like "Mailbox"}
     $script:MBXStatsAll = foreach($ExchangeServer in $ExchangeServers){
-        Get-MailboxStatistics -server $ExchangeServer -noADLookup | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn,DisplayName
+        Get-MailboxStatistics -server $ExchangeServer.name -noADLookup | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn,DisplayName
         Write-Information "Success - retrieved Mailbox Statistics for all mailboxes from server $ExchangeServer"
     }
     Write-Information "$($script:MBXStatsAll.count) total mailboxes"
@@ -187,7 +187,7 @@ $timestamp = Get-Date -Format o | ForEach-Object {$_ -replace ":", "."}
 # $daystamp = Get-Date -Format 'MM-dd-yyyy'
 
 # Setup output variables script wide
-$script:outputFolder= "$($ENV:HOMEPATH)\desktop\"
+$script:outputFolder= "$($ENV:HOMEDRIVE)$($ENV:HOMEPATH)\desktop\"
 $script:mailboxAuditOutput = $script:outputFolder + "MBX audit" + $timestamp + ".csv"
 $script:ADUserOutput = $script:outputFolder + "AD users with mailboxes.csv"
 $script:MBXStatsOutput = $script:outputFolder + "MBX stats for all mailboxes.csv"
