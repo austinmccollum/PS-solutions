@@ -1,5 +1,5 @@
-﻿$templatePath = 'F:\Automation\JetstressConfig.xml'
-$dbmaps=Import-Csv 'f:\automation\LABDAG_Servers.csv'
+﻿$templatePath = 'C:\Tools\mcRepo\Jetstress Automation\JetstressConfig.xml'
+$dbmaps=Import-Csv 'C:\Tools\mcRepo\Jetstress Automation\Servers_2019.csv'
 $jsconfig= New-Object -Typename XML
 $jsconfig.Load($templatePath)
 
@@ -25,7 +25,7 @@ foreach($dbmap in $dbmaps){
 
             $i++
 		}
-	$jsconfig.save("f:\automation\"+$dbmap.servername+".xml")
+	$jsconfig.save("C:\Tools\mcRepo\Jetstress Automation\"+$dbmap.servername+".xml")
 }
 
 

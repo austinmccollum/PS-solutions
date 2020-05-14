@@ -242,7 +242,7 @@ Function Get-Permissions { # Iterate through each user and grab Send-As permissi
     }
 }
 
-Function Export-Permissions # Export the permissions to a CSV file.  If AnalyzeBatches was used, the output is a subset of those permissions whose relationship is not satisfied by the batch suggestions.
+Function Export-Permissions # Export the permissions to a CSV file.
 {
 
     $Script:Permissions | Export-CSV -path ".\$OutputLocation" -NoTypeInformation

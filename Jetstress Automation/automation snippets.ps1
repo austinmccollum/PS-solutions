@@ -1,11 +1,28 @@
 # Need credentials for many of the invoking commands - here's a quick way to get creds into a variable temporarily
 $adminpass=read-host -Prompt "enter password" -AsSecureString
 $adminuser="Fabrikam\fabadmin"
-[securestring]$admincreds=new-object System.Management.Automation.PSCredential -ArgumentList $adminuser,$adminpass -
+$admincreds=new-object System.Management.Automation.PSCredential -ArgumentList $adminuser,$adminpass 
+
+#setup firewall rules for robocopy
+$computernames = @("ex2019","ex2019-2","ex2019-3")
+
+Invoke-Command -ComputerName $computernames -ScriptBlock {
+New-NetFirewallRule -Name "RoboCopy_tcp_in_TEMP" -DisplayName "Allow Robocopy TCP-In" -Description "Need to copy files for Exchange Setup - disable after Exchange install successful" -Enabled True -Protocol TCP -RemotePort 445 -Action Allow -RemoteAddress "10.0.0.5-10.0.0.7" -Direction Inbound; New-NetFirewallRule -Name "RoboCopy_tcp_out_TEMP" -DisplayName "Allow Robocopy TCP-Out" -Description "Need to copy files for Exchange Setup - disable after Exchange install successful" -Enabled True -Protocol TCP -RemotePort 445 -Action Allow -RemoteAddress "10.0.0.5-10.0.0.7" -Direction Outbound}
+
+Invoke-Command -ComputerName $computernames -ScriptBlock {Get-NetFirewallRule -name "Robocopy_tcp_in_TEMP" | Get-NetFirewallApplicationFilter | set-NetFirewallApplicationFilter -program "%SystemRoot%\System32\Robocopy.exe";Get-NetFirewallRule -name "Robocopy_tcp_out_TEMP" | Get-NetFirewallApplicationFilter | set-NetFirewallApplicationFilter -program "%SystemRoot%\System32\Robocopy.exe"}
+
+Invoke-Command -ComputerName $computernames -ScriptBlock {mkdir c:\Automation}
+
+#create share on jump server with everyone Read permissions at c:\automation
+# include scripts, UCMA, input files, etc.
+
+Invoke-Command -ComputerName $computernames -ScriptBlock {Robocopy.exe /S \\10.0.0.5\Automation\ c:\Automation}
+
 
 Invoke-Command -ThrottleLimit 32 -ComputerName $computernames-scriptblock {param([securestring]$admincreds) New-PSDrive -Name X -PSProvider FileSystem -Root \\Ex1\g$\js -Credential $admincreds; Copy-Item -Path x:\ -Destination "g:\" -Recurse} -ArgumentList $admincreds
 #1..2 | foreach {"EX$_"} | Get-ADComputer | % {Invoke-Command -ComputerName $_.name {get-disk | ft}}
 $computernames=(1..2 | ForEach-Object {"EX$($_)"} | Get-ADComputer).name
+$computernames=1..2 | ForEach-Object {"EX$($_)"}
 
 #Invoke-Command -ThrottleLimit 32 -ComputerName $computernames -ScriptBlock {param($admincreds) New-Item -Path f:\ -ItemType directory -Name "Automation"} -argumentlist $admincreds
 
@@ -58,7 +75,8 @@ This process will restart itself within 5 seconds.
 
 # "C:\Program Files\Exchange Jetstress\JetstressCmd.exe"  /c "C:\Program Files\Exchange Jetstress\JetstressConfigInitialize.xml" /timeout 0H0M0S /new /threads 0
 
-Invoke-Command -ComputerName EX2  { & 'C:\Program Files\Exchange Jetstress\jetstresscmd.exe' /c "F:\Automation\EX2.xml" /timeout 0H0M0S /new /threads 0}
+Invoke-Command -ComputerName $computernames  { & 'C:\Program Files\Exchange Jetstress\jetstresscmd.exe' /c "F:\Automation\$($env:COMPUTERNAME).xml" /timeout 0H0M0S /new /threads 0}
+Invoke-Command -ComputerName EX2  { & 'C:\Program Files\Exchange Jetstress\jetstresscmd.exe' /c "F:\Automation\EX2.xml" /timeout 0H5M0S /open /threads 2}
 
 $computernames_contoso_DAG1 = 11..18 | ForEach-Object {"Ex$($_)SITE1"} 
 $computernames_contoso_DAG1 += 19..26 | ForEach-Object {"Ex$($_)SITE2"} 
@@ -85,3 +103,52 @@ Invoke-Command -ComputerName $computernames {
 #    ---------- -----------                                                                                                   ---- --------------
 #             3 {F:\ExchangeVols\ExVol3\, F:\ExchangeDBs\DAG1-DB1\, \\?\Volume{0b097e7e-c8d5-42d2-a826-d8a786de3e1a}\} 53550776320 EX2
 # --> missing 3 {F:\ExchangeVols\ExVol3\, \\?\Volume{8cc5f485-5525-4eb6-bcac-5485144e3858}\}                           53550776320 EX1
+
+# Determin if HyperThreading is on
+$ComputerName = $env:COMPUTERNAME
+$LogicalCPU = 0
+$PhysicalCPU = 0
+$Core = 0
+
+# Get the Processor information from the WMI object
+$Proc = [object[]]$(get-WMIObject Win32_Processor -ComputerName $ComputerName)
+if ($($Proc | measure-object -Property NumberOfLogicalProcessors -sum).Sum -gt $($Proc | measure-object -Property NumberOfCores -sum).Sum)
+{write-host "HypterThreading is enabled" -ForegroundColor Yellow}
+Else {write-host "HyperThreading is not enabled" -ForegroundColor Green}
+
+
+$accesspaths = get-partition
+$accessRemoval =$accesspaths | ?{$_.accesspaths -like 'F:\Exchange*'}
+$accessRemoval | ft disknumber,accesspaths
+
+1..8 | %{"DAG1-DB0$_"} | %{New-Item -Type directory -Path "F:\ExchangeDatabases\$($_)" -WhatIf}
+
+
+[Array]$DiskPart = Import-CSV -Path F:\Automation\labdagservers.csv
+$Machine = get-wmiobject "Win32_ComputerSystem"
+$Machine.Name
+Foreach ($Server in $Diskpart) {
+    If ($Machine.name -eq $Server.ServerName) {
+        $DBperVolume = [int]$Server.DBperVolume
+        $DiskStart = [int]$Server.StartDrive
+        $ExchangeDBs = $Server.DatabasesRootFolder
+        [Array]$DbMap = $Server.DbMap -split ","
+        $LastDrive = $DiskStart - 1 + $DbMap.Count/$DBperVolume
+    }
+}
+
+$DBmounts = get-partition | ?{$_.accesspaths -like 'F:\ExchangeVols*'}
+$DBcount=$DBmap.Count
+$count=0
+Foreach ($DBmount in $DbMounts) {
+    if($count -gt $DBcount){write-host "something wrong here!"}
+    $CurrentDisk = $DBmount.disknumber
+    $CurrentPartition = $DBmount.partitionnumber
+    for ($CurrentMount = 1; $CurrentMount -eq $DBperVolume)
+    {
+        [string]$DB=$DBmap[$count]
+        $DBPath = "$ExchangeDBs\$DB"
+        Add-PartitionAccessPath -DiskNumber $currentdisk -PartitionNumber $currentpartition -AccessPath "$DBPath"-Passthru |Set-Partition -NoDefaultDriveLetter:$True
+        $count++
+    }
+}
