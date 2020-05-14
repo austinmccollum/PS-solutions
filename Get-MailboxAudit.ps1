@@ -46,9 +46,9 @@ function Get-ADMailboxUsers($searchbase) {
 function Get-ServerMailboxStatistics() {
     # retrieve all mailbox statistics per server to reduce overall runtime of script
 
-    $ExchangeServers = Get-ExchangeServer | ?{$_.serverrole -like "Mailbox"}
+    $ExchangeServers = Get-ExchangeServer | Where-Object{$_.serverrole -like "Mailbox"}
     $script:MBXStatsAll = foreach($ExchangeServer in $ExchangeServers){
-        Get-MailboxStatistics -server $ExchangeServer -noADLookup | Select TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn,DisplayName
+        Get-MailboxStatistics -server $ExchangeServer -noADLookup | Select-Object TotalItemSize,TotalDeletedItemSize,mailboxguid,lastlogontime,legacyDn,DisplayName
         Write-Information "Success - retrieved Mailbox Statistics for all mailboxes from server $ExchangeServer"
     }
     Write-Information "$($script:MBXStatsAll.count) total mailboxes"
@@ -89,8 +89,8 @@ function Stop-MailboxAuditStatistics() {
     }
 }
 
-function Exit-MailboxAuditStatistics($error) {
-    foreach ($err in $error) 
+function Exit-MailboxAuditStatistics($auto_errors) {
+    foreach ($err in $auto_errors) 
     {  
         $logdata = $null 
         $logdata = $err 
