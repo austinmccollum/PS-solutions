@@ -62,8 +62,8 @@ foreach ($targetMailbox in $targetMailboxes) {
  
         # ...and write the mailbox log to the output file... 
         $logData = $null 
-        if ($version -eq "15") { $logData = (Get-MobileDeviceStatistics $device.Identity -GetMailboxLog -ErrorAction SilentlyContinue | select -ExpandProperty MailboxLogReport) } 
-        if ($version -eq "14") { $logData = (Get-ActiveSyncDeviceStatistics $device.Identity -GetMailboxLog:$true -ErrorAction SilentlyContinue | select -ExpandProperty MailboxLogReport) } 
+        if ($version -eq "15") { $logData = (Get-MobileDeviceStatistics $device.Identity -GetMailboxLog -ErrorAction SilentlyContinue | Select-Object -ExpandProperty MailboxLogReport) } 
+        if ($version -eq "14") { $logData = (Get-ActiveSyncDeviceStatistics $device.Identity -GetMailboxLog:$true -ErrorAction SilentlyContinue | Select-Object -ExpandProperty MailboxLogReport) } 
              
         if ($logData.Length -gt 0) { 
             Write-Host "Saving logs to: " $fileName 

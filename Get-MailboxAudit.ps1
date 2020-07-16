@@ -115,14 +115,13 @@ function Add-MailboxAuditStatistics ($aduser) {
         Write-Verbose "aduser legdn $($aduser.legacyExchangeDN)"
         $mailbox = $script:MBXStatsAll.where({$_.legacydn -eq ($aduser.legacyExchangeDN)})
 
-        [datetime]$mbxlogoncompare = $mailbox.lastlogontime
         Write-Verbose "Looking at $($mailbox.DisplayName)"
 
         if($null -eq $mailbox.lastlogontime)
         {
             $MbxLastLogon="Never"
         }
-        else{$MbxLastLogon=$mailbox.lastlogontime}
+        else{[datetime]$MbxLastLogon=$mailbox.lastlogontime}
         write-Verbose "Last Mailbox Logon Time for $($mailbox.legacyexchangeDN) is... $MBXLastLogon"
         if ($mbxlogoncompare -le $agedDate -or ($MbxLastLogon -eq "Never"))
         {
