@@ -1,7 +1,7 @@
 # Make private key nonexportable - locks down access to your machine and login
-# Secure tenant restricts credential lifetime policy to 1 month, so we create cert validity of 1 month
+# A secure tenant Azure policy may restrict credential lifetime policy. In this example, the secure environment sets validity to 1 month, so we create cert validity of 1 month
 
-# using date to make cert more unique and stand out in the list of certs
+# using date/time to make cert more unique and stand out in the list of certs
 $today = (Get-Date).ToString("yyyy-MM-dd HH:mm")
 
 # even though lifetime policy is max 1 month, we can't use AddDays(30) because in February, it creates a validity period over 1 month

@@ -1,5 +1,5 @@
-
 # requires Powershell module MSAL.PS https://www.powershellgallery.com/packages/MSAL.PS/4.37.0.0
+
 <#
 .SYNOPSIS
 
