@@ -1,4 +1,4 @@
-# Powershell solutions
+# PowerShell solutions
 
 This repository is a collection of automation and scripting bits to test Azure and Microsoft 365 technologies.
 
@@ -31,9 +31,40 @@ Use this script to create a secure 30 day self-signed certificate:
 
 A secure self-signed certificate restricts access to the private key (comparable to the secret) with your logon identity (windows user profile) and prevents the certificate from being moved and prevents the private key from being exported.
 
-The public portion of the certificate is going to be the `.cer` file. If you used the sample script, this will be the **SelfSignedApiTestingCert***yyyy-MM-dd HH:mm***.cer** exported to your desktop.
+The public portion of the certificate is going to be the `.cer` file. If you used the sample script, this will be the **SelfSignedApiTestingCert** *yyyy-MM-dd HH:mm* **.cer** exported to your desktop.
 
 1. Navigate to your App registration > Certificates & secrets.
 1. Select the `.cer` public certificate and add a description
 
-:::image type="content" source="resources/public-certificate-upload.png" alt-text="Screenshot showing upload of .cer file in certificate store of the app registration." lightbox="resources/public-certificate-upload.png":::
+### Set permissions
+
+Depending on the API, there are 2 different permissions that may be required.
+
+#### Permission type 1 - API Permissions
+
+For example, in order for the app to access certain REST APIs, you need to add API permissions. Here are 3 examples:
+
+- Example 1: [Data Collection Rules - REST API (Azure Monitor)](https://learn.microsoft.com/rest/api/monitor/data-collection-rules?view=rest-monitor-2023-03-11)
+
+  This API requires the Log Analytics API. In this case, the options are straightforward as there's only 1 option. Choose Application permissions for unattended scripts. Then give admin consent.
+
+- Example 2: Microsoft Graph 
+
+  This REST API has extensive and very granular API permissions. It is very difficult to know what you need if you haven't been here before. Graph Explorer is a great place to start to understand the API permissions you need and test.
+  [Graph Explorer | Try Microsoft Graph APIs](https://developer.microsoft.com/graph/graph-explorer)
+
+  >Graph explorer shows you what API permissions are required and whether admin consent is needed. Once the Graph Explorer test is successful, mirror the API permission configuration for your App registration.
+  >Graph Explorer demonstrates the API permissions in the delegated model with user permissions. For the *client_credentials* grant type where we're using the self-signed certificate, your app needs the application permissions.
+
+- Example 3: Threat Intelligence STIX object [upload API](https://learn.microsoft.com/azure/sentinel/stix-objects-api)
+
+  This API and many other REST APIs like the Microsoft Sentinel REST APIs don't require API permissions, but do require Azure RBAC permissions.
+
+#### Permission Type 2 – Azure RBAC
+
+Some APIs require giving your application Azure RBAC permissions at a certain scope. For example, the Microsoft Sentinel upload API requires the app registration to be granted the Microsoft Sentinel contributor role at the workspace level.
+
+## Securely test APIs with a PowerShell script
+
+Once your App registration, self-signed certificate and permissions are configured, you're ready to securely test APIs! 
+[Test-API.ps1](Test-API.ps1)
