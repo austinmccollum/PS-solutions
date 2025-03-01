@@ -36,4 +36,4 @@ The public portion of the certificate is going to be the `.cer` file. If you use
 1. Navigate to your App registration > Certificates & secrets.
 1. Select the `.cer` public certificate and add a description
 
-:::image type="content" source="resources/public-certificate-upload.png" alt-text="Screenshot showing upload of .cer file in certificate store of the app registration." lightbox="resources/public-certificate-upload.png":::
+<img src="resources/public-certificate-upload.png" alt-text="Screenshot showing upload of .cer file in certificate store of the app registration.">
