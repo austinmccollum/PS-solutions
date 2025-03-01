@@ -88,6 +88,7 @@ $Scope = "https://management.azure.com/.default"
 Add-Type -AssemblyName System.Web
 
 # Connection details for getting initial token with self-signed certificate from local store
+#  To create a secure self-signed certificate, see New-SelfSignedApiCert.ps1 https://github.com/austinmccollum/PS-solutions/blob/main/New-SelfSignedApiCert.ps1
 $connectionDetails = @{
     'TenantId'          = $TenantName
     'ClientId'          = $AppId
