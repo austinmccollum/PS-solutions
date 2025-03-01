@@ -3,7 +3,7 @@
 <#
 .SYNOPSIS
 
-This command uses a certificate thumbprint to access the private key of a self-signed certificate and use it to get OAuth 2.0 token for client_credentials grant type (unattended automation).
+This commandlet uses a certificate thumbprint to access the private key of a self-signed certificate and use it to get OAuth 2.0 token for client_credentials grant type (unattended automation).
 Then, based on the options you provide, perform a REST API call to the proper endpoint.
     .DESCRIPTION
         Perform a REST API call to its endpoint and output the results in JSON format.
@@ -36,6 +36,8 @@ Then, based on the options you provide, perform a REST API call to the proper en
     .EXAMPLE
         Test-Api -API UploadApi -WorkspaceName "workspacename" -ResourceGroupName "rgname" -AppId "00001111-aaaa-2222-bbbb-3333cccc4444" -TenantName "contoso.onmicrosoft.com" -Path "C:\Users\user\Documents\stixobjects.json"
 #>
+
+# Add new APIs as needed. Update the Api parameter ValidateSet, include a new conditional block, and add the API endpoint and method.
 
 [CmdletBinding()]
 param (
@@ -76,13 +78,13 @@ param (
 )
 
 # Testing APIs
-#  Thanks to Nicola Suter for a great example!
+#  Thanks to Nicola Suter for a great example of OAuth 2.0 with a user certificate!
 #  https://tech.nicolonsky.ch/explaining-microsoft-graph-access-token-acquisition/
 
 # This script focuses on REST APIs that use the management.azure.com scope
 $Scope = "https://management.azure.com/.default"
 
-# Add System.Web for urlencode
+# Add System.Web for urlencode. Not currently using, but an older version of the script did, so leaving it in for now.
 Add-Type -AssemblyName System.Web
 
 # Connection details for getting initial token with self-signed certificate from local store
