@@ -53,7 +53,6 @@ For example, in order for the app to access certain REST APIs, you need to add A
   This REST API has extensive and very granular API permissions. It is very difficult to know what you need if you haven't been here before. Graph Explorer is a great place to start to understand the API permissions you need and test.
   [Graph Explorer | Try Microsoft Graph APIs](https://developer.microsoft.com/graph/graph-explorer)
 
-  >[!NOTE]
   >Graph explorer shows you what API permissions are required and whether admin consent is needed. Once the Graph Explorer test is successful, mirror the API permission configuration for your App registration.
   >Graph Explorer demonstrates the API permissions in the delegated model with user permissions. For the *client_credentials* grant type where we're using the self-signed certificate, your app needs the application permissions.
 
