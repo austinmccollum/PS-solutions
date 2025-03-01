@@ -6,25 +6,33 @@
 This command uses a certificate thumbprint to access the private key of a self-signed certificate and use it to get OAuth 2.0 token for client_credentials grant type (unattended automation).
 Then, based on the options you provide, perform a REST API call to the proper endpoint.
     .DESCRIPTION
-        Perform a REST API call to an endpoint you provide and output the results in JSON format.
-    .PARAMETER WorkspaceName
-        Enter the Log Analytics workspace name, this is a required parameter
-    .PARAMETER WorkspaceId
-        Enter the Log Analytics workspace ID, this is a required parameter
-    .PARAMETER ResourceGroupName
-        Enter the Resource Group Name where the LA workspace resides, this is a required parameter
-    .PARAMETER AppId
-        Enter the Application ID of the App Registration you created, this is a required parameter
+        Perform a REST API call to its endpoint and output the results in JSON format.
+    .PARAMETER Api
+        Enter the API you want to test, this is a required parameter
     .PARAMETER TenantName
         Enter the Tenant Name where the App Registration resides, this is a required parameter
     .PARAMETER CertThumbprint
         Enter the thumbprint of the certificate uploaded to your app registration, this is a required parameter
+    .PARAMETER AppId
+        Enter the Application ID of the App Registration you created, this is a required parameter
+    .PARAMETER WorkspaceName
+        Enter the Log Analytics workspace name
+    .PARAMETER WorkspaceId
+        Enter the Log Analytics workspace ID
+    .PARAMETER ResourceGroupName
+        Enter the Resource Group Name where the LA workspace resides, this is a required parameter
     .PARAMETER SubscriptionId
         Enter the Subscription ID where the resources reside, this is a required parameter
+    .PARAMETER ItemId
+        Enter the specific item ID you want to GET. This may be an alertID, DCR name, etc.
+    .PARAMETER ApiVersionOverride
+        Enter the API version you want to use. If not provided, the script will use the default API version.
+    .PARAMETER Path
+        Enter the path to a file for APIs that require a -Body parameter.
     .NOTES
         AUTHOR: Austin McCollum
-        ALIAS: AustinMc 
-        LASTEDIT: 2.24.2025
+        GITHUB ALIAS: austinmccollum
+        LASTEDIT: 3.01.2025
     .EXAMPLE
         Test-Api -API UploadApi -WorkspaceName "workspacename" -ResourceGroupName "rgname" -AppId "00001111-aaaa-2222-bbbb-3333cccc4444" -TenantName "contoso.onmicrosoft.com" -Path "C:\Users\user\Documents\stixobjects.json"
 #>
