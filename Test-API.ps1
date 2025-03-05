@@ -1,5 +1,7 @@
 # requires Powershell module MSAL.PS https://www.powershellgallery.com/packages/MSAL.PS/4.37.0.0
 
+function Test-Api {
+
 <#
 .SYNOPSIS
 
@@ -27,7 +29,7 @@ Then, based on the options you provide, perform a REST API call to the proper en
         Enter the specific item ID you want to GET. This may be an alertID, DCR name, etc.
     .PARAMETER ApiVersionOverride
         Enter the API version you want to use. If not provided, the script will use the default API version.
-    .PARAMETER Path
+    .PARAMETER FilePath
         Enter the path to a file for APIs that require a -Body parameter.
     .NOTES
         AUTHOR: Austin McCollum
@@ -74,7 +76,7 @@ param (
 
     [Parameter(Mandatory = $false)]
     [ValidateScript({ Test-Path $_ -PathType Leaf })]
-    [string]$Path
+    [string]$FilePath
 )
 
 # Testing APIs
@@ -113,10 +115,11 @@ $Header = @{
 # Samples in the article I wrote here
 #  https://learn.microsoft.com/en-us/azure/sentinel/stix-objects-api?branch=main#sample-indicator-request-body
 if ($Api -eq "uploadApi") {
-    if (-not $ApiVersionOverride) { $apiVersion = "2023-12-01-preview" } 
+        if (-not $ApiVersionOverride) { $apiVersion = "2024-02-01-preview" } 
     else { $apiVersion = $ApiVersionOverride }
     $Uri = "https://api.ti.sentinel.azure.com/workspaces/$workspaceId/threat-intelligence-stix-objects:upload?api-version=$apiVersion"
-    $stixobjects = get-content -path $Path
+    $stixobjects = get-content -path $FilePath
+    if(-not $stixobjects) { Write-Host "No file found at $FilePath"; break }
     $results = Invoke-RestMethod -Uri $Uri -Headers $Header -Body $stixobjects -Method POST -ContentType "application/json"
 }
 
@@ -176,4 +179,4 @@ if ($Api -eq "GetAlertRuleTemplateApi") {
 }
 
 $results | ConvertTo-Json -Depth 8
-$results
+}
