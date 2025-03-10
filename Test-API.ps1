@@ -31,6 +31,8 @@ Then, based on the options you provide, perform a REST API call to the proper en
         Enter the API version you want to use. If not provided, the script will use the default API version.
     .PARAMETER FilePath
         Enter the path to a file for APIs that require a -Body parameter.
+    .PARAMETER GenerateUuid
+        Enter this switch to generate a UUID for the API call.
     .NOTES
         AUTHOR: Austin McCollum
         GITHUB ALIAS: austinmccollum
@@ -44,7 +46,7 @@ Then, based on the options you provide, perform a REST API call to the proper en
 [CmdletBinding()]
 param (
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("UploadApi", "ListDcrApi", "GetDcrApi", "ListAlertRulesApi", "GetAlertRuleApi", "GetAlertRuleTemplateApi")]
+    [ValidateSet("UploadApi", "ListDcrApi", "GetDcrApi", "ListAlertRulesApi", "GetAlertRuleApi", "GetAlertRuleTemplateApi", "ListIncidentsApi", "CreateIncidentApi", "UpdateIncidentApi")]
     [string]$Api = "uploadApi",
 
     [Parameter(Mandatory = $true)]
@@ -70,6 +72,9 @@ param (
 
     [Parameter(Mandatory = $false)]
     [string]$ItemId,
+
+    [Parameter(Mandatory = $false)]
+    [switch]$GenerateUuid,
 
     [Parameter(Mandatory = $false)]
     [string]$ApiVersionOverride,
@@ -121,6 +126,49 @@ if ($Api -eq "uploadApi") {
     $stixobjects = get-content -path $FilePath
     if(-not $stixobjects) { Write-Host "No file found at $FilePath"; break }
     $results = Invoke-RestMethod -Uri $Uri -Headers $Header -Body $stixobjects -Method POST -ContentType "application/json"
+}
+
+# ListIncidentApi
+# REST API call to list incidents
+# https://learn.microsoft.com/en-us/rest/api/securityinsights/incidents/list?view=rest-securityinsights-2024-09-01&tabs=HTTP
+if ($Api -eq "ListIncidentsApi") {
+    if (-not $apiversionoverride) { $apiVersion = "2024-09-01" }
+    else { $apiVersion = $ApiVersionOverride }
+    $Uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$workspaceName/providers/Microsoft.SecurityInsights/incidents?api-version=$apiVersion"
+    $results = Invoke-RestMethod -Uri $Uri -Headers $Header -Method GET
+}
+
+# CreateIncidentApi
+# REST API call to create an incident
+# https://learn.microsoft.com/en-us/rest/api/securityinsights/incidents/create?view=rest-securityinsights-2024-09-01&tabs=HTTP
+if ($Api -eq "CreateIncidentApi") {
+    if (-not $apiversionoverride) { $apiVersion = "2024-09-01" }
+    else { $apiVersion = $ApiVersionOverride }
+    if ($generateUuid)
+    {
+        # Generate a UUID based on RFC 4122
+        $uuid = [guid]::NewGuid().ToString()
+        Write-Output $uuid
+        $ItemId = $uuid
+    }
+    else {$incidentId = $ItemId}
+    $Uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$workspaceName/providers/Microsoft.SecurityInsights/incidents/$($incidentId)?api-version=$apiVersion"
+    $incident = get-content -path $FilePath
+    if(-not $incident) { Write-Host "No file found at $FilePath"; break }
+    $results = Invoke-RestMethod -Uri $Uri -Headers $Header -Body $incident -Method PUT -ContentType "application/json"
+}
+
+# UpdateIncidentApi
+# REST API call to update an incident
+# https://learn.microsoft.com/en-us/rest/api/securityinsights/incidents/update?view=rest-securityinsights-2024-09-01&tabs=HTTP
+if ($Api -eq "UpdateIncidentApi") {
+    if (-not $apiversionoverride) { $apiVersion = "2024-09-01" }
+    else { $apiVersion = $ApiVersionOverride }
+    $incidentId = $ItemId
+    $Uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$workspaceName/providers/Microsoft.SecurityInsights/incidents/$($incidentId)?api-version=$apiVersion"
+    $incident = get-content -path $FilePath
+    if(-not $incident) { Write-Host "No file found at $FilePath"; break }
+    $results = Invoke-RestMethod -Uri $Uri -Headers $Header -Body $incident -Method PUT -ContentType "application/json"
 }
 
 # ListDcrApi

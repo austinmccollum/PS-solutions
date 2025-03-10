@@ -1,0 +1,26 @@
+{
+"properties": {
+    "description": "This is a demo incident with unique ID",
+    "title": "My incident",
+    "severity": "Medium",
+    "status": "New",
+    "owner": {
+        "objectId": "1c840bab-2e7f-4a44-953c-86d200399fd9",
+        "email": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
+        "assignedTo": "Fransje Vanderschoot",
+        "userPrincipalName": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
+        "ownerType": "User"
+    },
+    "additionalData": {
+        "alertsCount": 0,
+        "bookmarksCount": 0,
+        "commentsCount": 0,
+        "alertProductNames": [
+            "Microsoft Sentinel"
+        ],
+        "tactics": [
+            "Discovery"
+            ]
+        }
+    }
+}

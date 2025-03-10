@@ -1,0 +1,16 @@
+{
+    "etag": "\"78003b96-0000-0100-0000-67c9b63a0000\"",
+    "type": "Microsoft.SecurityInsights/Incidents",
+    "properties": {
+        "title": "Sign-ins from IPs that attempt sign-ins to disabled accounts",
+        "severity": "Medium",
+        "status": "Active",
+        "owner": {
+            "objectId": "1c840bab-2e7f-4a44-953c-86d200399fd9",
+            "email": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
+            "assignedTo": "Fransje Vanderschoot",
+            "userPrincipalName": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
+            "ownerType": "User"
+        }
+    }
+}
