@@ -1,7 +1,7 @@
 {
 "properties": {
-    "description": "This is a demo incident with unique ID",
-    "title": "My incident",
+    "description": "This is another demo incident with unique ID",
+    "title": "Testing Incident 2 API for USX",
     "severity": "Medium",
     "status": "New",
     "owner": {
@@ -11,6 +11,16 @@
         "userPrincipalName": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
         "ownerType": "User"
     },
+    "labels": [
+            {
+                "labelName": "demo 2",
+                "labelType": "User"
+            },
+            {
+                "labelName": "test 2",
+                "labelType": "User"
+            }
+        ],
     "additionalData": {
         "alertsCount": 0,
         "bookmarksCount": 0,

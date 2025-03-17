@@ -1,0 +1,35 @@
+    {
+      "etag" : "\"8f00784d-0000-0100-0000-67ced8580000\"",
+      "properties": {
+        "title": "My incident",
+        "description": "This is a demo incident",
+        "severity": "High",
+        "status": "New",
+        "owner": {
+            "objectId": "1c840bab-2e7f-4a44-953c-86d200399fd9",
+            "email": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
+            "assignedTo": "Fransje Vanderschoot",
+            "userPrincipalName": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
+            "ownerType": "User"
+        },
+        "labels": [
+          {
+            "labelName": "demo 2",
+            "labelType": "User"
+          },
+          {
+            "labelName": "test 2",
+            "labelType": "User"
+          }
+        ],
+        "incidentNumber": 9,
+        "additionalData": {
+          "alertsCount": 0,
+          "bookmarksCount": 0,
+          "commentsCount": 0,
+          "alertProductNames": [],
+          "tactics": [],
+          "techniques": []
+        }
+      }
+    }

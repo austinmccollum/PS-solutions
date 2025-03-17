@@ -1,5 +1,5 @@
 {
-    "etag": "\"78003b96-0000-0100-0000-67c9b63a0000\"",
+    "etag": "\"7800729d-0000-0100-0000-67c9b7c40000\"",
     "type": "Microsoft.SecurityInsights/Incidents",
     "properties": {
         "title": "Sign-ins from IPs that attempt sign-ins to disabled accounts",
@@ -11,6 +11,16 @@
             "assignedTo": "Fransje Vanderschoot",
             "userPrincipalName": "FraVand@MicrosoftLearnSecurityDocs3.onmicrosoft.com",
             "ownerType": "User"
-        }
+        },
+        "labels": [
+            {
+                "labelName": "demo 2",
+                "labelType": "User"
+            },
+            {
+                "labelName": "test 2",
+                "labelType": "User"
+            }
+        ]        
     }
 }

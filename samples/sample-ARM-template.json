@@ -1,0 +1,40 @@
+{
+
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {},
+    "resources": [
+    {
+        "type": "Microsoft.OperationalInsights/workspaces/tables",
+        "apiVersion": "2022-10-01",
+        "name": "my_workspace/custom_logs_table_CL",
+        "properties": {
+            "plan": "Analytics",
+            "retentionInDays": "20",
+            "schema": {
+                "columns": [
+                {
+                    "name": "TimeGenerated",
+                    "type": "datetime",
+                    "description": "The time at which the data was ingested."
+                },
+                {
+                    "name": "RawData",
+                    "type": "string",
+                    "description": "Body of the event."
+                },
+                {
+                    "name": "Properties",
+                    "type": "dynamic",
+                    "description": "Additional message properties."
+                }
+                ],
+                "description": "Table description.",
+                "displayName": "custom_logs_table_CL",
+                "name": "custom_logs_table_CL"
+            },
+            "totalRetentionInDays": "20"
+        }
+    }
+    ]
+}

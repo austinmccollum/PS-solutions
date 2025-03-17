@@ -47,7 +47,7 @@ Then, based on the options you provide, perform a REST API call to the proper en
 param (
     [Parameter(Mandatory = $true, Position = 0)]
     [ValidateSet("UploadApi", "ListDcrApi", "GetDcrApi", "ListAlertRulesApi", "GetAlertRuleApi", "GetAlertRuleTemplateApi", "ListIncidentsApi", "CreateIncidentApi", "UpdateIncidentApi")]
-    [string]$Api = "uploadApi",
+    [string]$Api,
 
     [Parameter(Mandatory = $true)]
     [string]$TenantName,
@@ -149,7 +149,7 @@ if ($Api -eq "CreateIncidentApi") {
         # Generate a UUID based on RFC 4122
         $uuid = [guid]::NewGuid().ToString()
         Write-Output $uuid
-        $ItemId = $uuid
+        $incidentId = $uuid
     }
     else {$incidentId = $ItemId}
     $Uri = "https://management.azure.com/subscriptions/$subscriptionId/resourceGroups/$resourceGroupName/providers/Microsoft.OperationalInsights/workspaces/$workspaceName/providers/Microsoft.SecurityInsights/incidents/$($incidentId)?api-version=$apiVersion"
