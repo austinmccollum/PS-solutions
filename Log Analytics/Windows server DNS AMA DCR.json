@@ -1,0 +1,56 @@
+{
+    "properties": {
+        "dataSources": {
+            "windowsEventLogs": [],
+            "extensions": [
+            {
+                "streams": [
+                "Microsoft-ASimDnsActivityLogs"
+                ],
+                "extensionName": "MicrosoftDnsAgent",
+                "extensionSettings": {
+                    "Filters": [
+                    {
+                        "FilterName": "SampleFilter",
+                        "Rules": [
+                        {
+                            "Field": "EventOriginalType",
+                            "FieldValues": [
+                            "260"
+                            ]
+                        }
+                        ]
+                    }
+                    ]
+                },
+                "name": "SampleDns"
+            }
+            ]
+        },
+        "destinations": {
+            "logAnalytics": [
+            {
+                "workspaceResourceId": "/subscriptions/{subscriptionId}/resourceGroups/{resourceGroup}/providers/Microsoft.OperationalInsights/workspaces/{sentinelWorkspaceName}",
+                "workspaceId": { WorkspaceGuid }",
+                    "name": "WorkspaceDestination"
+                }
+            ]
+        },
+        "dataFlows": [
+            {
+                "streams": [
+                    "Microsoft-ASimDnsActivityLogs"
+                ],
+                "destinations": [
+                    " WorkspaceDestination "
+                ]
+            }
+        ],
+    },
+    "location": "eastus2",
+    "tags": {},
+    "kind": "Windows",
+    "id":"/subscriptions/{ subscriptionId }/resourceGroups/ { resourceGroup }/providers/Microsoft.Insights/dataCollectionRules/ { workspaceName }-microsoft-sentinel-asimdnsactivitylogs ",
+    "name": " { workspaceName }-microsoft-sentinel-asimdnsactivitylogs ",
+    "type": "Microsoft.Insights/dataCollectionRules",
+}
